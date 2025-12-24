@@ -16,12 +16,12 @@
 
 .tree {
   position: relative;
-  height: 50vmin;
-  width: 25vmin;
-  min-height: 300px;
-  min-width: 150px;
-  max-height: 500px;
-  max-width: 250px;
+  height: 60vmin;
+  width: 30vmin;
+  min-height: 360px;
+  min-width: 180px;
+  max-height: 600px;
+  max-width: 300px;
   transform-style: preserve-3d;
   animation: spin 2s infinite linear;
   overflow: visible;
@@ -103,8 +103,8 @@
 /* Mobile optimizations */
 @media (max-width: 768px) {
   .tree {
-    height: 45vmin;
-    width: 22.5vmin;
+    height: 55vmin;
+    width: 27.5vmin;
   }
   
   .tree-container {
@@ -114,8 +114,8 @@
 
 @media (max-width: 480px) {
   .tree {
-    height: 40vmin;
-    width: 20vmin;
+    height: 50vmin;
+    width: 25vmin;
   }
   
   .tree-container {
@@ -126,10 +126,10 @@
 /* iPhone 15 Pro specific (393px width) */
 @media (max-width: 430px) and (min-height: 840px) {
   .tree {
-    height: 38vmin;
-    width: 19vmin;
-    min-height: 280px;
-    min-width: 140px;
+    height: 48vmin;
+    width: 24vmin;
+    min-height: 340px;
+    min-width: 170px;
   }
   
   .tree-container {

@@ -27,6 +27,56 @@ resource "aws_ecr_repository" "heppi" {
   }
 }
 
+# IAM role for EC2 instance to pull from ECR
+resource "aws_iam_role" "heppi_ec2" {
+  name = "heppi-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "heppi-ec2-role"
+  }
+}
+
+# IAM policy for ECR access
+resource "aws_iam_role_policy" "heppi_ecr" {
+  name = "heppi-ecr-policy"
+  role = aws_iam_role.heppi_ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Instance profile to attach the role to EC2
+resource "aws_iam_instance_profile" "heppi" {
+  name = "heppi-instance-profile"
+  role = aws_iam_role.heppi_ec2.name
+}
+
 # Get the latest Amazon Linux 2023 AMI
 data "aws_ami" "amazon_linux" {
   most_recent = true
@@ -105,6 +155,7 @@ resource "aws_instance" "heppi" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t2.micro" # Free tier eligible
   key_name      = var.key_pair_name
+  iam_instance_profile = aws_iam_instance_profile.heppi.name
 
   vpc_security_group_ids = [aws_security_group.heppi_sg.id]
 

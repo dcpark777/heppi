@@ -98,30 +98,45 @@ systemctl start certbot-renew.timer
 # Configure AWS CLI for ECR (if using ECR)
 # Note: Instance role should have ECR permissions, or configure AWS credentials
 
-# Auto-deploy application
+# Auto-deploy application from ECR
 ECR_REPO="${ecr_repository_url}"
 
-# Option 1: Deploy from ECR (if ECR repository is available)
+# Wait for AWS CLI to be available and IAM role to be attached
+sleep 10
+
+# Deploy from ECR (primary method)
 if [ -n "$ECR_REPO" ] && command -v aws &> /dev/null; then
+    echo "=========================================="
     echo "Deploying from ECR: $ECR_REPO"
+    echo "=========================================="
     
-    # Login to ECR
-    aws ecr get-login-password --region ${aws_region} | podman login --username AWS --password-stdin $ECR_REPO || true
+    # Login to ECR using IAM role
+    aws ecr get-login-password --region ${aws_region} | podman login --username AWS --password-stdin $ECR_REPO
     
-    # Pull and run from ECR
-    podman pull $ECR_REPO:latest || echo "ECR pull failed, will try Git deployment"
+    # Pull the latest image
+    echo "Pulling latest image from ECR..."
+    podman pull $ECR_REPO:latest
+    
+    # Stop and remove existing container if running
     podman stop heppi-app 2>/dev/null || true
     podman rm heppi-app 2>/dev/null || true
     
+    # Run the container
+    echo "Starting application container..."
     podman run -d \
         --name heppi-app \
         -p 3000:3000 \
         --restart unless-stopped \
-        $ECR_REPO:latest && echo "Application deployed from ECR!" && exit 0
+        $ECR_REPO:latest
+    
+    echo "✅ Application deployed from ECR!"
+    podman ps | grep heppi-app
+    exit 0
 fi
 
-# Option 2: Deploy from Git (fallback or if GIT_REPO_URL is set)
+# Fallback: Deploy from Git (if ECR fails and GIT_REPO_URL is set)
 if [ -n "$GIT_REPO_URL" ]; then
+    echo "ECR deployment failed, falling back to Git..."
     echo "Cloning repository from $GIT_REPO_URL..."
     cd /home/ec2-user
     git clone $GIT_REPO_URL heppi-app || true
@@ -145,9 +160,8 @@ if [ -n "$GIT_REPO_URL" ]; then
     
     echo "Application deployed from Git and running!"
 else
-    echo "No deployment method configured."
-    echo "Set GIT_REPO_URL in terraform.tfvars for Git-based deployment,"
-    echo "or use ECR by running: make ecr-push"
+    echo "⚠️  No deployment method available."
+    echo "Please push an image to ECR first: make ecr-push"
 fi
 
 echo "Heppi instance is ready!"

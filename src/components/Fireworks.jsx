@@ -13,8 +13,10 @@ function Fireworks() {
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300
     let rocketPhaseRatio = 0.15  // Reduced from 0.33 to make rocket faster
-    // "I LOVE YOU" will be split into two lines
-    let str = ['MERRY', 'CHRISTMAS', 'I LOVE', 'YOU']
+    let str = ['MERRY', 'CHRISTMAS', 'I LOVE YOU']
+    let multilineStrings = {
+      'I LOVE YOU': ['YOU', 'I LOVE']
+    }
 
     function makeChar(c) {
       let tmp = document.createElement('canvas')
@@ -48,8 +50,23 @@ function Fireworks() {
       if (current === actual && chars)
         return
       current = actual
-      // Filter out spaces and map each character
-      chars = [...str[actual]].filter(c => c !== ' ').map(makeChar)
+      
+      let currentStr = str[actual]
+      // Check if this string should be displayed on multiple lines
+      if (multilineStrings[currentStr]) {
+        // For multiline strings, create chars for all lines
+        chars = []
+        multilineStrings[currentStr].forEach((line, lineIndex) => {
+          let lineChars = [...line].filter(c => c !== ' ').map(c => makeChar(c))
+          // Store line index with each char set for positioning
+          lineChars.forEach(charParticles => {
+            chars.push({ particles: charParticles, lineIndex: lineIndex, totalLines: multilineStrings[currentStr].length })
+          })
+        })
+      } else {
+        // Single line - filter out spaces and map each character
+        chars = [...currentStr].filter(c => c !== ' ').map(c => ({ particles: makeChar(c), lineIndex: 0, totalLines: 1 }))
+      }
     }
 
     function render(t) {
@@ -58,18 +75,19 @@ function Fireworks() {
       ctx.fillStyle = '#00000040'
       ctx.fillRect(0, 0, w, h)
       if (chars && chars.length > 0) {
-        chars.forEach((pts, i) => firework(t, i, pts))
+        chars.forEach((charData, i) => firework(t, i, charData.particles, charData.lineIndex, charData.totalLines))
       }
     }
 
-    function firework(t, i, pts) {
+    function firework(t, i, pts, lineIndex = 0, totalLines = 1) {
       // Get the current string index
       let currentStringIndex = parseInt(t / duration) % str.length
       // Calculate time within current cycle
       let cycleTime = t % duration
       
-      // Stagger each firework by 200ms
-      let fireworkTime = cycleTime - (i * 200)
+      // For multiline strings, all fireworks start at the same time (no staggering)
+      let staggerDelay = multilineStrings[str[currentStringIndex]] ? 0 : (i * 200)
+      let fireworkTime = cycleTime - staggerDelay
       
       // Only render if this firework should be active (within its time window)
       if (fireworkTime < 0 || fireworkTime > duration) {
@@ -78,12 +96,25 @@ function Fireworks() {
       
       let id = i + chars.length * currentStringIndex
       let normalizedTime = fireworkTime / duration
-      let dx = (i + 1) * w / (1 + chars.length)
+      
+      // Calculate horizontal position
+      let charsInLine = chars.filter(c => c.lineIndex === lineIndex).length
+      let lineChars = chars.filter(c => c.lineIndex === lineIndex)
+      let charIndexInLine = lineChars.findIndex(c => c === chars[i])
+      let dx = (charIndexInLine + 1) * w / (1 + charsInLine)
       // Reduced variation for more consistent explosion positions
       dx += Math.min(rocketPhaseRatio, normalizedTime) * 30 * Math.sin(id)
+      
+      // Calculate vertical position - offset for multiline
       let dy = h * 0.5
+      // For multiline, offset vertically based on line index
+      if (totalLines > 1) {
+        let lineSpacing = h * 0.25  // Increased spacing for better separation
+        dy += (lineIndex - (totalLines - 1) / 2) * lineSpacing
+      }
       // Reduced vertical variation
       dy += Math.sin(id * 4547.411) * h * 0.03
+      
       if (normalizedTime < rocketPhaseRatio) {
         rocket(dx, dy, id, normalizedTime / rocketPhaseRatio)
       } else {
@@ -102,10 +133,11 @@ function Fireworks() {
       let dy = (t * t * t) * 20
       let r = Math.sin(id) * 0.5 + 1.5
       r = t < 0.5 ? (t + 0.5) * t * r : r - t * r
-      ctx.fillStyle = `hsl(${id * 55}, 55%, 55%)`
+      // Increased brightness - higher lightness values
+      ctx.fillStyle = `hsl(${id * 55}, 70%, 75%)`
       pts.forEach((xy, i) => {
         if (i % 20 === 0)
-          ctx.fillStyle = `hsl(${id * 55}, 55%, ${55 + t * Math.sin(t * 55 + i) * 45}%)`
+          ctx.fillStyle = `hsl(${id * 55}, 70%, ${75 + t * Math.sin(t * 55 + i) * 20}%)`
         circle(t * xy[0] + x, h - y + t * xy[1] + dy, r)
       })
     }

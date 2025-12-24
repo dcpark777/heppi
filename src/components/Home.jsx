@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import ChristmasTree from './ChristmasTree'
 import Fireworks from './Fireworks'
+import Snow from './Snow'
 
 function Home({ supabase, session }) {
   const [showLogout, setShowLogout] = useState(false)
+  const [snowEnabled, setSnowEnabled] = useState(true)
 
   const handleLogout = async () => {
     if (supabase) {
@@ -13,11 +15,25 @@ function Home({ supabase, session }) {
 
   return (
     <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-end px-4 relative">
+      {/* Snow falling */}
+      {snowEnabled && <Snow />}
+      
       {/* Fireworks background */}
       <Fireworks />
 
-      {session && (
-        <div className="absolute top-4 right-4 z-20">
+      {/* Top right controls */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-3">
+        {/* Snow toggle button */}
+        <button
+          onClick={() => setSnowEnabled(!snowEnabled)}
+          className={`text-gray-400 hover:text-white transition-colors p-2 rounded text-lg ${snowEnabled ? 'bg-gray-800/50' : ''}`}
+          aria-label={snowEnabled ? "Disable snow" : "Enable snow"}
+          title={snowEnabled ? "Disable snow" : "Enable snow"}
+        >
+          {snowEnabled ? '❄️' : '❄'}
+        </button>
+
+        {session && (
           <div className="relative">
             <button
               onClick={() => setShowLogout(!showLogout)}
@@ -36,8 +52,8 @@ function Home({ supabase, session }) {
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <main className="flex items-center justify-center w-full max-w-full overflow-visible relative z-10 pb-4">
         <div className="w-full flex justify-center overflow-visible">

@@ -82,7 +82,8 @@ function Fireworks() {
       let adjustedTime = t - treeAppearDelay
       makeChars(adjustedTime)
       requestAnimationFrame(render)
-      ctx.fillStyle = '#00000040'
+      // Use rgba to match the dark blue background (#0a0e13) with 25% opacity for fade effect
+      ctx.fillStyle = 'rgba(10, 14, 19, 0.25)'
       ctx.fillRect(0, 0, w, h)
       if (chars && chars.length > 0) {
         chars.forEach((charData, i) => firework(adjustedTime, i, charData.particles, charData.lineIndex, charData.totalLines))

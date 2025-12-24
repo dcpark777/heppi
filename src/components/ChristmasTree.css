@@ -8,6 +8,7 @@
   perspective: 1200px;
   transform-style: preserve-3d;
   padding: 5vmin 0;
+  margin-top: 8vmin;
   position: relative;
   z-index: 10;
 }

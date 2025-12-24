@@ -9,7 +9,10 @@ function Fireworks() {
     if (!canvas) return
 
     let chars, particles, ctx, w, h, current
-    let duration = 5000
+    // Calculate duration to keep letters lit same time (5360ms) but with faster rocket (15% instead of 33%)
+    // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
+    let duration = 6300
+    let rocketPhaseRatio = 0.15  // Reduced from 0.33 to make rocket faster
     let str = ['MERRY', 'CHRISTMAS', 'I LOVE YOU']
 
     function makeChar(c) {
@@ -51,7 +54,7 @@ function Fireworks() {
     function render(t) {
       makeChars(t)
       requestAnimationFrame(render)
-      ctx.fillStyle = '#00000010'
+      ctx.fillStyle = '#00000040'
       ctx.fillRect(0, 0, w, h)
       if (chars && chars.length > 0) {
         chars.forEach((pts, i) => firework(t, i, pts))
@@ -75,13 +78,13 @@ function Fireworks() {
       let id = i + chars.length * currentStringIndex
       let normalizedTime = fireworkTime / duration
       let dx = (i + 1) * w / (1 + chars.length)
-      dx += Math.min(0.33, normalizedTime) * 100 * Math.sin(id)
+      dx += Math.min(rocketPhaseRatio, normalizedTime) * 100 * Math.sin(id)
       let dy = h * 0.5
       dy += Math.sin(id * 4547.411) * h * 0.1
-      if (normalizedTime < 0.33) {
-        rocket(dx, dy, id, normalizedTime * 3)
+      if (normalizedTime < rocketPhaseRatio) {
+        rocket(dx, dy, id, normalizedTime / rocketPhaseRatio)
       } else {
-        explosion(pts, dx, dy, id, Math.min(1, Math.max(0, (normalizedTime - 0.33) * 2)))
+        explosion(pts, dx, dy, id, Math.min(1, Math.max(0, (normalizedTime - rocketPhaseRatio) / (1 - rocketPhaseRatio))))
       }
     }
 
@@ -94,7 +97,7 @@ function Fireworks() {
 
     function explosion(pts, x, y, id, t) {
       let dy = (t * t * t) * 20
-      let r = Math.sin(id) * 1 + 3
+      let r = Math.sin(id) * 0.5 + 1.5
       r = t < 0.5 ? (t + 0.5) * t * r : r - t * r
       ctx.fillStyle = `hsl(${id * 55}, 55%, 55%)`
       pts.forEach((xy, i) => {

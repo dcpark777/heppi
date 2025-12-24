@@ -1,0 +1,13 @@
+# Files to ignore when deploying to Vercel
+terraform/
+*.zip
+node_modules/
+.git/
+.DS_Store
+cursor_documentation/
+175-Rotating-Chrismas-Tree/
+09-Newyear-Fireworks-Animation/
+*.tfstate
+*.tfstate.backup
+.terraform/
+

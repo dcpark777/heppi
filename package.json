@@ -1,24 +1,25 @@
 {
   "name": "heppi",
   "version": "1.0.0",
-  "description": "A mobile-friendly Christmas-themed blog web application",
+  "description": "A mobile-friendly Christmas-themed web application with rotating tree and fireworks",
   "type": "module",
-  "main": "server.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "start": "node server.js",
-    "server": "node server.js"
+    "preview": "vite preview"
   },
-  "keywords": ["blog", "christmas", "mobile"],
+  "keywords": [
+    "christmas",
+    "mobile",
+    "react",
+    "vite"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.38.4",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@supabase/supabase-js": "^2.38.4"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
@@ -30,4 +31,3 @@
     "vite": "^5.0.8"
   }
 }
-

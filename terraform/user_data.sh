@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+# Don't use set -e as it can cause premature exit during initialization
+# Instead, check return codes explicitly where needed
 
 # Variables from Terraform
 SUBDOMAIN="${subdomain}"
@@ -8,51 +9,31 @@ FULL_DOMAIN="${full_domain}"
 GIT_REPO_URL="${git_repo_url}"
 
 # Update system
-dnf update -y
+echo "Updating system packages..."
+dnf update -y || { echo "WARNING: dnf update had issues, continuing..."; }
 
-# Install Podman
-dnf install -y podman
-systemctl enable podman.socket
-systemctl start podman.socket
+# Install Docker (more reliable on AWS than Podman)
+echo "Installing Docker..."
+dnf install -y docker || { echo "ERROR: Failed to install docker"; exit 1; }
+systemctl enable docker || { echo "ERROR: Failed to enable docker"; exit 1; }
+systemctl start docker || { echo "ERROR: Failed to start docker"; exit 1; }
 
 # Install Nginx
-dnf install -y nginx
+echo "Installing Nginx..."
+dnf install -y nginx || { echo "ERROR: Failed to install nginx"; exit 1; }
 
-# Install Certbot for Let's Encrypt
-dnf install -y certbot python3-certbot-nginx
+# Skip Certbot - not using SSL for now
+# dnf install -y certbot python3-certbot-nginx || { echo "ERROR: Failed to install certbot"; exit 1; }
 
 # Install Git
-dnf install -y git
+echo "Installing Git..."
+dnf install -y git || { echo "ERROR: Failed to install git"; exit 1; }
 
-# Configure Nginx as reverse proxy
+# Configure Nginx as reverse proxy (HTTP only, no SSL)
 cat > /etc/nginx/conf.d/heppi.conf <<NGINX_CONFIG
 server {
     listen 80;
-    server_name $FULL_DOMAIN;
-    
-    # Let's Encrypt validation
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-    
-    # Redirect HTTP to HTTPS (will be active after SSL setup)
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $FULL_DOMAIN;
-    
-    # SSL configuration (will be updated by certbot)
-    ssl_certificate /etc/letsencrypt/live/$FULL_DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$FULL_DOMAIN/privkey.pem;
-    
-    # SSL settings
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
+    server_name $FULL_DOMAIN _;
     
     # Proxy to application
     location / {
@@ -69,37 +50,15 @@ server {
 }
 NGINX_CONFIG
 
-# Create directory for Let's Encrypt validation
-mkdir -p /var/www/certbot
-
-# Start Nginx (will fail initially without SSL cert, that's ok)
-systemctl enable nginx
-systemctl start nginx || true
-
-# Wait for instance to be fully ready and DNS to propagate
-sleep 60
-
-# Request SSL certificate from Let's Encrypt
-certbot certonly --nginx \
-    --non-interactive \
-    --agree-tos \
-    --email admin@$DOMAIN_NAME \
-    -d $FULL_DOMAIN \
-    --webroot \
-    --webroot-path=/var/www/certbot || true
-
-# Reload Nginx with SSL configuration
-systemctl reload nginx || systemctl restart nginx
-
-# Set up auto-renewal
-systemctl enable certbot-renew.timer
-systemctl start certbot-renew.timer
+# Don't start Nginx yet - wait for container to be ready first
+# We'll start it after the container is running
 
 # Configure AWS CLI for ECR (if using ECR)
 # Note: Instance role should have ECR permissions, or configure AWS credentials
 
 # Auto-deploy application from ECR
 ECR_REPO="${ecr_repository_url}"
+AWS_REGION="${aws_region}"
 
 # Wait for AWS CLI to be available and IAM role to be attached
 # Also wait for instance metadata service
@@ -118,33 +77,54 @@ if [ -n "$ECR_REPO" ] && command -v aws &> /dev/null; then
     
     # Login to ECR using IAM role
     echo "Logging into ECR..."
-    aws ecr get-login-password --region ${aws_region} 2>&1 | podman login --username AWS --password-stdin $ECR_REPO 2>&1
+    aws ecr get-login-password --region $AWS_REGION 2>&1 | docker login --username AWS --password-stdin $ECR_REPO 2>&1
     
     if [ $? -ne 0 ]; then
         echo "⚠️  ECR login failed, will try Git deployment"
     else
         # Pull the latest image
         echo "Pulling latest image from ECR..."
-        podman pull $ECR_REPO:latest 2>&1
+        docker pull $ECR_REPO:latest 2>&1
         
         if [ $? -eq 0 ]; then
             # Stop and remove existing container if running
-            podman stop heppi-app 2>/dev/null || true
-            podman rm heppi-app 2>/dev/null || true
+            docker stop heppi-app 2>/dev/null || true
+            docker rm heppi-app 2>/dev/null || true
             
             # Run the container
             echo "Starting application container..."
-            podman run -d \
+            docker run -d \
                 --name heppi-app \
                 -p 3000:3000 \
                 --restart unless-stopped \
                 $ECR_REPO:latest 2>&1
             
-            echo "✅ Application deployed from ECR!"
-            podman ps | grep heppi-app || echo "⚠️  Container may not be running"
-            sleep 2
-            podman logs heppi-app 2>&1 | tail -20 || true
-            exit 0
+            if [ $? -eq 0 ]; then
+                echo "✅ Application deployed from ECR!"
+                sleep 5
+                docker ps | grep heppi-app || echo "⚠️  Container may not be running"
+                docker logs heppi-app 2>&1 | tail -20 || true
+                
+                # Test if container is responding
+                sleep 5
+                curl -f http://localhost:3000 > /dev/null 2>&1 && echo "✅ Container is responding on port 3000" || echo "⚠️  Container not responding yet"
+                
+                # Start Nginx now that container is running
+                echo "Starting Nginx..."
+                systemctl enable nginx || { echo "ERROR: Failed to enable nginx"; exit 1; }
+                systemctl start nginx || { echo "ERROR: Failed to start nginx"; exit 1; }
+                
+                # Wait for DNS to propagate
+                echo "Waiting for DNS to propagate..."
+                sleep 30
+                
+                # Ensure Nginx is running and can proxy
+                systemctl status nginx --no-pager | head -5 || systemctl restart nginx
+                echo "✅ Setup complete!"
+            else
+                echo "ERROR: Failed to start container from ECR"
+                exit 1
+            fi
         else
             echo "⚠️  ECR pull failed, will try Git deployment"
         fi
@@ -159,26 +139,38 @@ if [ -n "$GIT_REPO_URL" ]; then
     git clone $GIT_REPO_URL heppi-app || true
     cd heppi-app
     
-    # Build and run with Podman
+    # Build and run with Docker
     echo "Building application..."
-    podman build -t heppi:latest .
+    docker build -t heppi:latest .
     
     # Stop existing container if running
-    podman stop heppi-app 2>/dev/null || true
-    podman rm heppi-app 2>/dev/null || true
+    docker stop heppi-app 2>/dev/null || true
+    docker rm heppi-app 2>/dev/null || true
     
     # Run the application
     echo "Starting application..."
-    podman run -d \
+    docker run -d \
         --name heppi-app \
         -p 3000:3000 \
         --restart unless-stopped \
         heppi:latest
     
     echo "Application deployed from Git and running!"
+    
+    # Start Nginx now that container is running
+    echo "Starting Nginx..."
+    systemctl enable nginx || { echo "ERROR: Failed to enable nginx"; exit 1; }
+    systemctl start nginx || { echo "ERROR: Failed to start nginx"; exit 1; }
+    
+    # Wait for DNS to propagate
+    echo "Waiting for DNS to propagate..."
+    sleep 30
 else
     echo "⚠️  No deployment method available."
     echo "Please push an image to ECR first: make ecr-push"
+    # Start Nginx anyway so we can at least see if it's working
+    systemctl enable nginx || true
+    systemctl start nginx || true
 fi
 
 echo "Heppi instance is ready!"

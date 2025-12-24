@@ -1,24 +1,23 @@
 # Heppi 🎄
 
-A mobile-friendly Christmas-themed blog web application built with React, Tailwind CSS, and Supabase authentication.
+A mobile-friendly Christmas-themed web application with a rotating 3D Christmas tree and fireworks animation. Built with React, Vite, and Tailwind CSS, deployed on Vercel.
 
 ## Features
 
 - 🎄 Rotating 3D Christmas tree with animated lights
+- 🎆 Fireworks animation with "MERRY", "CHRISTMAS", and "I LOVE YOU" messages
 - 📱 Mobile-optimized for iPhone and other mobile devices
-- 🔐 Supabase authentication (optional - works without it)
-- 🐳 Docker containerization support
-- ☁️ Terraform configuration for AWS EC2 (free tier)
-- ⚛️ React + Vite for fast development
-- 🎨 Tailwind CSS for modern styling
+- 🔐 Optional Supabase authentication
+- ⚡ Fast development with Vite
+- 🎨 Modern styling with Tailwind CSS
+- ☁️ Deployed on Vercel with automatic HTTPS
 
 ## Tech Stack
 
 - **Frontend**: React 18, Vite, Tailwind CSS
-- **Backend**: Node.js, Express
 - **Authentication**: Supabase (optional)
-- **Infrastructure**: Terraform, AWS EC2
-- **Containerization**: Docker
+- **Deployment**: Vercel
+- **Build Tool**: Vite
 
 ## Getting Started
 
@@ -37,27 +36,34 @@ npm install
 2. **Set up environment variables (optional for Supabase):**
 ```bash
 # Create .env file (optional - app works without Supabase)
-cp .env.example .env
-# Edit .env and add your Supabase credentials if you want authentication
+# VITE_SUPABASE_URL=your_project_url
+# VITE_SUPABASE_ANON_KEY=your_anon_key
 ```
 
 3. **Start the development server:**
 ```bash
 npm run dev
+# or
+make dev
 ```
 
 This will start Vite dev server on `http://localhost:5173` with hot reload.
 
-4. **For production build:**
+4. **Build for production:**
 ```bash
-# Build the React app
 npm run build
-
-# Start the Express server
-npm start
+# or
+make build
 ```
 
-The app will be available at `http://localhost:3000`.
+The built files will be in the `dist/` directory.
+
+5. **Preview production build:**
+```bash
+npm run preview
+# or
+make preview
+```
 
 ## Supabase Setup (Optional)
 
@@ -72,103 +78,57 @@ The app works without Supabase, but if you want authentication:
    VITE_SUPABASE_ANON_KEY=your_anon_key
    ```
 
-## Docker
+## Deployment
 
-### Build the Docker image:
-```bash
-docker build -t heppi .
-```
+This project is configured for deployment on **Vercel**. See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions.
 
-### Run the container:
-```bash
-docker run -p 3000:3000 heppi
-```
+### Quick Deploy
 
-Then visit `http://localhost:3000` in your browser.
+1. Push your code to GitHub
+2. Go to [vercel.com](https://vercel.com) and import your repository
+3. Vercel will auto-detect Vite and deploy automatically
+4. Add your custom domain in Vercel settings
 
-### With environment variables:
-```bash
-docker run -p 3000:3000 \
-  -e VITE_SUPABASE_URL=your_url \
-  -e VITE_SUPABASE_ANON_KEY=your_key \
-  heppi
-```
+### Benefits of Vercel
 
-## AWS Deployment (Free Tier)
-
-### Prerequisites
-
-1. AWS account with free tier eligibility
-2. AWS CLI configured
-3. Terraform installed (>= 1.0)
-4. EC2 Key Pair created
-
-### Quick Start
-
-1. **Create an EC2 Key Pair:**
-```bash
-aws ec2 create-key-pair --key-name heppi-key --query 'KeyMaterial' --output text > heppi-key.pem
-chmod 400 heppi-key.pem
-```
-
-2. **Configure Terraform:**
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
-```
-
-3. **Deploy:**
-```bash
-terraform init
-terraform plan
-terraform apply
-```
-
-4. **Deploy the application:**
-   - SSH into the instance using the output from Terraform
-   - Clone your repo or copy files
-   - Build and run with Docker
-
-See `terraform/README.md` for detailed instructions.
-
-### Cost
-
-- **EC2 t2.micro**: Free for 12 months (750 hours/month)
-- **Data transfer**: First 1 GB/month free
-- **Storage**: 30 GB free (EBS)
-
-**Estimated cost: $0/month** (within free tier limits)
+- ✅ No server management
+- ✅ Automatic HTTPS/SSL
+- ✅ Global CDN (fast worldwide)
+- ✅ Auto-deploy on every Git push
+- ✅ Free tier sufficient for this project
+- ✅ Much simpler than EC2/Docker setup
 
 ## Project Structure
 
 ```
 heppi/
 ├── src/
-│   ├── components/        # React components
-│   │   ├── Login.jsx     # Login page
-│   │   ├── Home.jsx      # Home page
-│   │   └── ChristmasTree.jsx  # Christmas tree component
-│   ├── App.jsx           # Main app component
-│   ├── main.jsx         # React entry point
-│   └── index.css        # Global styles + Tailwind
-├── public/              # Static assets
-├── terraform/           # Terraform configuration
-│   ├── main.tf         # Main Terraform config
-│   └── variables.tf    # Variables
-├── server.js            # Express server
-├── vite.config.js       # Vite configuration
-├── tailwind.config.js   # Tailwind configuration
-├── Dockerfile           # Docker configuration
-└── package.json         # Dependencies
+│   ├── components/           # React components
+│   │   ├── ChristmasTree.jsx # Rotating Christmas tree
+│   │   ├── Fireworks.jsx     # Fireworks animation
+│   │   ├── Home.jsx          # Home page
+│   │   └── Login.jsx         # Login page (optional)
+│   ├── App.jsx               # Main app component
+│   ├── main.jsx              # React entry point
+│   └── index.css             # Global styles + Tailwind
+├── public/                   # Static assets
+├── vercel.json              # Vercel configuration
+├── vite.config.js           # Vite configuration
+├── tailwind.config.js        # Tailwind configuration
+└── package.json             # Dependencies
 ```
 
 ## Scripts
 
 - `npm run dev` - Start Vite dev server (port 5173)
 - `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm start` - Start Express server (port 3000)
+- `npm run preview` - Preview production build locally
+
+Or use Make:
+- `make dev` - Start development server
+- `make build` - Build for production
+- `make preview` - Preview production build
+- `make install` - Install dependencies
 
 ## Mobile Optimization
 
@@ -179,13 +139,9 @@ The application is optimized for mobile devices with:
 - Apple mobile web app support
 - Tailwind CSS responsive utilities
 
-## Future Features
+## Legacy Infrastructure
 
-- Blog post creation and management
-- Rich text editor
-- Image uploads
-- Categories and tags
-- Search functionality
+The `terraform/` directory contains legacy AWS EC2 deployment configuration. This is no longer needed since we're using Vercel, but kept for reference. You can safely ignore or delete it.
 
 ## License
 

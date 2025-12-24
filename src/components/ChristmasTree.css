@@ -9,7 +9,7 @@
   transform-style: preserve-3d;
   padding: 5vmin 0;
   margin-top: auto;
-  margin-bottom: 5vmin;
+  margin-bottom: 2vmin;
   position: relative;
   z-index: 10;
 }
@@ -106,12 +106,35 @@
     height: 45vmin;
     width: 22.5vmin;
   }
+  
+  .tree-container {
+    margin-bottom: 3vmin;
+  }
 }
 
 @media (max-width: 480px) {
   .tree {
     height: 40vmin;
     width: 20vmin;
+  }
+  
+  .tree-container {
+    margin-bottom: 4vmin;
+  }
+}
+
+/* iPhone 15 Pro specific (393px width) */
+@media (max-width: 430px) and (min-height: 840px) {
+  .tree {
+    height: 38vmin;
+    width: 19vmin;
+    min-height: 280px;
+    min-width: 140px;
+  }
+  
+  .tree-container {
+    margin-bottom: 5vmin;
+    padding: 3vmin 0;
   }
 }
 

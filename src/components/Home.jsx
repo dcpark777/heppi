@@ -12,7 +12,7 @@ function Home({ supabase, session }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-center px-4 relative">
+    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-end px-4 relative">
       {/* Fireworks background */}
       <Fireworks />
 
@@ -39,7 +39,7 @@ function Home({ supabase, session }) {
         </div>
       )}
 
-      <main className="flex-1 flex items-center justify-center w-full max-w-full overflow-visible relative z-10">
+      <main className="flex items-center justify-center w-full max-w-full overflow-visible relative z-10 pb-4">
         <div className="w-full flex justify-center overflow-visible">
           <ChristmasTree />
         </div>

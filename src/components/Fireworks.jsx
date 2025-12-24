@@ -17,6 +17,8 @@ function Fireworks() {
     let multilineStrings = {
       'I LOVE YOU': ['YOU', 'I LOVE']
     }
+    // Wait for Christmas tree to fully appear (lights animation takes ~2.5 seconds for 50 lights)
+    let treeAppearDelay = 3000  // 3 seconds delay before fireworks start
 
     function makeChar(c) {
       let tmp = document.createElement('canvas')
@@ -70,12 +72,20 @@ function Fireworks() {
     }
 
     function render(t) {
-      makeChars(t)
+      // Wait for tree to appear before starting fireworks
+      if (t < treeAppearDelay) {
+        requestAnimationFrame(render)
+        return
+      }
+      
+      // Adjust time to account for delay
+      let adjustedTime = t - treeAppearDelay
+      makeChars(adjustedTime)
       requestAnimationFrame(render)
       ctx.fillStyle = '#00000040'
       ctx.fillRect(0, 0, w, h)
       if (chars && chars.length > 0) {
-        chars.forEach((charData, i) => firework(t, i, charData.particles, charData.lineIndex, charData.totalLines))
+        chars.forEach((charData, i) => firework(adjustedTime, i, charData.particles, charData.lineIndex, charData.totalLines))
       }
     }
 
@@ -105,11 +115,12 @@ function Fireworks() {
       // Reduced variation for more consistent explosion positions
       dx += Math.min(rocketPhaseRatio, normalizedTime) * 30 * Math.sin(id)
       
-      // Calculate vertical position - offset for multiline
-      let dy = h * 0.5
+      // Calculate vertical position - positioned well above the tree (in upper portion of screen)
+      // Note: In explosion function, position is h - y, so larger dy = higher on screen
+      let dy = h * 0.75  // Higher position (25% from top) to ensure letters are clearly above tree
       // For multiline, offset vertically based on line index
       if (totalLines > 1) {
-        let lineSpacing = h * 0.25  // Increased spacing for better separation
+        let lineSpacing = h * 0.20  // Slightly reduced spacing to keep lines closer together
         dy += (lineIndex - (totalLines - 1) / 2) * lineSpacing
       }
       // Reduced vertical variation

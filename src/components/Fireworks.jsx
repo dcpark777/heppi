@@ -13,7 +13,8 @@ function Fireworks() {
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300
     let rocketPhaseRatio = 0.15  // Reduced from 0.33 to make rocket faster
-    let str = ['MERRY', 'CHRISTMAS', 'I LOVE YOU']
+    // "I LOVE YOU" will be split into two lines
+    let str = ['MERRY', 'CHRISTMAS', 'I LOVE', 'YOU']
 
     function makeChar(c) {
       let tmp = document.createElement('canvas')
@@ -78,9 +79,11 @@ function Fireworks() {
       let id = i + chars.length * currentStringIndex
       let normalizedTime = fireworkTime / duration
       let dx = (i + 1) * w / (1 + chars.length)
-      dx += Math.min(rocketPhaseRatio, normalizedTime) * 100 * Math.sin(id)
+      // Reduced variation for more consistent explosion positions
+      dx += Math.min(rocketPhaseRatio, normalizedTime) * 30 * Math.sin(id)
       let dy = h * 0.5
-      dy += Math.sin(id * 4547.411) * h * 0.1
+      // Reduced vertical variation
+      dy += Math.sin(id * 4547.411) * h * 0.03
       if (normalizedTime < rocketPhaseRatio) {
         rocket(dx, dy, id, normalizedTime / rocketPhaseRatio)
       } else {

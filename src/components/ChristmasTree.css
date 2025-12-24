@@ -4,9 +4,10 @@
   justify-content: center;
   width: 100%;
   max-width: 100vw;
-  overflow: hidden;
+  overflow: visible;
   perspective: 1200px;
   transform-style: preserve-3d;
+  padding: 5vmin 0;
 }
 
 .tree {
@@ -19,6 +20,7 @@
   max-width: 250px;
   transform-style: preserve-3d;
   animation: spin 2s infinite linear;
+  overflow: visible;
 }
 
 .tree__light {
@@ -55,6 +57,7 @@
   stroke-dasharray: 1000 1000;
   fill: none;
   animation: stroke 1s calc((var(--delay) * 0.95) * 0.05s) both;
+  z-index: 1;
 }
 
 @keyframes stroke {

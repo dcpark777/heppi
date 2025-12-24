@@ -11,14 +11,10 @@ function Home({ supabase, session }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-start py-4 px-4">
-      <header className="text-center mb-8 w-full z-10">
-        <h1 className="text-4xl md:text-5xl font-bold mb-2 text-white drop-shadow-[0_0_20px_rgba(245,224,163,0.5)]">
-          🎄 Heppi
-        </h1>
-        <p className="text-gray-400 text-sm md:text-base">A Christmas Blog</p>
-        {session && (
-          <div className="mt-4 relative inline-block">
+    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-center px-4">
+      {session && (
+        <div className="absolute top-4 right-4 z-20">
+          <div className="relative">
             <button
               onClick={() => setShowLogout(!showLogout)}
               className="text-gray-400 hover:text-white text-sm transition-colors"
@@ -36,11 +32,11 @@ function Home({ supabase, session }) {
               </div>
             )}
           </div>
-        )}
-      </header>
+        </div>
+      )}
 
-      <main className="flex-1 flex items-center justify-center w-full max-w-full">
-        <div className="w-full flex justify-center">
+      <main className="flex-1 flex items-center justify-center w-full max-w-full overflow-visible">
+        <div className="w-full flex justify-center overflow-visible">
           <ChristmasTree />
         </div>
       </main>

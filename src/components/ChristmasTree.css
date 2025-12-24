@@ -8,6 +8,8 @@
   perspective: 1200px;
   transform-style: preserve-3d;
   padding: 5vmin 0;
+  position: relative;
+  z-index: 10;
 }
 
 .tree {

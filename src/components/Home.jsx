@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ChristmasTree from './ChristmasTree'
+import Fireworks from './Fireworks'
 
 function Home({ supabase, session }) {
   const [showLogout, setShowLogout] = useState(false)
@@ -11,7 +12,10 @@ function Home({ supabase, session }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-center px-4 relative">
+      {/* Fireworks background */}
+      <Fireworks />
+
       {session && (
         <div className="absolute top-4 right-4 z-20">
           <div className="relative">
@@ -35,7 +39,7 @@ function Home({ supabase, session }) {
         </div>
       )}
 
-      <main className="flex-1 flex items-center justify-center w-full max-w-full overflow-visible">
+      <main className="flex-1 flex items-center justify-center w-full max-w-full overflow-visible relative z-10">
         <div className="w-full flex justify-center overflow-visible">
           <ChristmasTree />
         </div>

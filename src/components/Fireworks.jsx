@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import './Fireworks.css'
 
-function Fireworks() {
+function Fireworks({ smokeEnabled = true }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -82,9 +82,15 @@ function Fireworks() {
       let adjustedTime = t - treeAppearDelay
       makeChars(adjustedTime)
       requestAnimationFrame(render)
-      // Use rgba to match the dark blue background (#0a0e13) with 25% opacity for fade effect
-      ctx.fillStyle = 'rgba(10, 14, 19, 0.25)'
-      ctx.fillRect(0, 0, w, h)
+      // Use rgba to match the dark blue background (#0a0e13) with higher opacity for faster fade
+      // Only apply if smoke is enabled
+      if (smokeEnabled) {
+        ctx.fillStyle = 'rgba(10, 14, 19, 0.5)'
+        ctx.fillRect(0, 0, w, h)
+      } else {
+        // Clear the canvas completely if smoke is disabled
+        ctx.clearRect(0, 0, w, h)
+      }
       if (chars && chars.length > 0) {
         chars.forEach((charData, i) => firework(adjustedTime, i, charData.particles, charData.lineIndex, charData.totalLines))
       }
@@ -136,7 +142,7 @@ function Fireworks() {
 
     function rocket(x, y, id, t) {
       ctx.fillStyle = 'white'
-      let r = 2 - 2 * t + Math.pow(t, 15 * t) * 16
+      let r = 2 - 2 * t + Math.pow(t, 15 * t) * 8  // Reduced from 16 to 8 for smaller explosion
       y = h - y * t
       circle(x, y, r)
     }
@@ -145,11 +151,11 @@ function Fireworks() {
       let dy = (t * t * t) * 20
       let r = Math.sin(id) * 0.5 + 1.5
       r = t < 0.5 ? (t + 0.5) * t * r : r - t * r
-      // Increased brightness - higher lightness values
-      ctx.fillStyle = `hsl(${id * 55}, 70%, 75%)`
+      // Brighter letters - increased lightness to 90% with higher variation
+      ctx.fillStyle = `hsl(${id * 55}, 70%, 90%)`
       pts.forEach((xy, i) => {
         if (i % 20 === 0)
-          ctx.fillStyle = `hsl(${id * 55}, 70%, ${75 + t * Math.sin(t * 55 + i) * 20}%)`
+          ctx.fillStyle = `hsl(${id * 55}, 70%, ${90 + t * Math.sin(t * 55 + i) * 10}%)`
         circle(t * xy[0] + x, h - y + t * xy[1] + dy, r)
       })
     }
@@ -170,7 +176,7 @@ function Fireworks() {
     return () => {
       window.removeEventListener('resize', handleResize)
     }
-  }, [])
+  }, [smokeEnabled])
 
   return <canvas ref={canvasRef} className="fireworks-canvas" />
 }

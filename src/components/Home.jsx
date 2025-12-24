@@ -6,6 +6,7 @@ import Snow from './Snow'
 function Home({ supabase, session }) {
   const [showLogout, setShowLogout] = useState(false)
   const [snowEnabled, setSnowEnabled] = useState(true)
+  const [smokeEnabled, setSmokeEnabled] = useState(true)
 
   const handleLogout = async () => {
     if (supabase) {
@@ -19,7 +20,7 @@ function Home({ supabase, session }) {
       {snowEnabled && <Snow />}
       
       {/* Fireworks background */}
-      <Fireworks />
+      <Fireworks smokeEnabled={smokeEnabled} />
 
       {/* Top right controls */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-3">

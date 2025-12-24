@@ -57,7 +57,7 @@ deploy: ## Deploy to AWS using Terraform
 	cd $(TERRAFORM_DIR) && \
 	terraform init && \
 	terraform plan && \
-	terraform apply
+	terraform apply -auto-approve
 	@echo "✅ Deployment complete!"
 	@echo "📋 Check outputs above for instance details"
 
@@ -74,4 +74,29 @@ install: ## Install npm dependencies
 	@echo "📦 Installing dependencies..."
 	npm install
 	@echo "✅ Dependencies installed!"
+
+ecr-login: ## Login to AWS ECR
+	@echo "🔐 Logging into ECR..."
+	@eval $$(cd terraform && terraform output -raw ecr_login_command)
+
+ecr-push: build ecr-login ## Build and push image to ECR
+	@echo "📤 Pushing to ECR..."
+	@ECR_URL=$$(cd terraform && terraform output -raw ecr_repository_url); \
+	podman tag heppi:latest $$ECR_URL:latest && \
+	podman push $$ECR_URL:latest
+	@echo "✅ Image pushed to ECR!"
+
+ecr-deploy: ecr-push ## Build, push to ECR, and trigger deployment
+	@echo "🚀 Deployment triggered!"
+	@echo "The EC2 instance will automatically pull and restart the container."
+	@echo "Note: You may need to SSH in and run: podman pull <ecr-url> && podman restart heppi-app"
+
+deploy-app: ## Deploy application from Git to EC2 instance
+	@echo "🚀 Deploying application to EC2..."
+	@INSTANCE_IP=$$(cd terraform && terraform output -raw instance_public_ip); \
+	SSH_KEY=$$(cd terraform && terraform output -raw ssh_command | awk '{print $$3}'); \
+	echo "Copying deployment script to instance..."; \
+	scp -i $$SSH_KEY terraform/deploy-app.sh ec2-user@$$INSTANCE_IP:/tmp/ && \
+	ssh -i $$SSH_KEY ec2-user@$$INSTANCE_IP "chmod +x /tmp/deploy-app.sh && /tmp/deploy-app.sh"
+	@echo "✅ Deployment complete!"
 

@@ -13,6 +13,20 @@ provider "aws" {
   region = var.aws_region
 }
 
+# ECR Repository for storing the container image
+resource "aws_ecr_repository" "heppi" {
+  name                 = "heppi"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name = "heppi-repository"
+  }
+}
+
 # Get the latest Amazon Linux 2023 AMI
 data "aws_ami" "amazon_linux" {
   most_recent = true
@@ -29,12 +43,13 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
+
 # Security group for the EC2 instance
 resource "aws_security_group" "heppi_sg" {
   name        = "heppi-security-group"
   description = "Security group for Heppi application"
 
-  # Allow HTTP traffic
+  # Allow HTTP traffic (for Let's Encrypt validation and redirect)
   ingress {
     from_port   = 80
     to_port     = 80
@@ -52,13 +67,14 @@ resource "aws_security_group" "heppi_sg" {
     description = "HTTPS"
   }
 
-  # Allow application port (3000) - optional, can be removed if using reverse proxy
+  # Allow application port (3000) - direct access for quick setup
+  # Remove this and use nginx/HTTPS for production
   ingress {
     from_port   = 3000
     to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Heppi app port"
+    description = "Heppi app port (direct access)"
   }
 
   # Allow SSH access (restrict to your IP in production)
@@ -92,34 +108,45 @@ resource "aws_instance" "heppi" {
 
   vpc_security_group_ids = [aws_security_group.heppi_sg.id]
 
-  user_data = <<-EOF
-              #!/bin/bash
-              # Update system
-              dnf update -y
-              
-              # Install Docker
-              dnf install -y docker
-              systemctl start docker
-              systemctl enable docker
-              
-              # Install Docker Compose (optional, for easier management)
-              curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-              chmod +x /usr/local/bin/docker-compose
-              
-              # Add ec2-user to docker group
-              usermod -aG docker ec2-user
-              
-              # Install Git
-              dnf install -y git
-              
-              # Clone and run the application (you'll need to set this up)
-              # For now, this is a placeholder
-              echo "Heppi instance is ready!"
-              EOF
+  user_data = templatefile("${path.module}/user_data.sh", {
+    subdomain      = var.subdomain
+    domain_name    = var.domain_name
+    full_domain     = "${var.subdomain}.${var.domain_name}"
+    git_repo_url   = var.git_repo_url
+    ecr_repository_url = aws_ecr_repository.heppi.repository_url
+    aws_region     = var.aws_region
+  })
 
   tags = {
     Name = "heppi-app"
   }
+}
+
+# Route53 Hosted Zone (create if hosted_zone_id is not provided)
+resource "aws_route53_zone" "main" {
+  count = var.hosted_zone_id == "" ? 1 : 0
+  name  = var.domain_name
+}
+
+# Get existing hosted zone if hosted_zone_id is provided
+data "aws_route53_zone" "existing" {
+  count   = var.hosted_zone_id != "" ? 1 : 0
+  zone_id = var.hosted_zone_id
+}
+
+# Local for hosted zone ID
+locals {
+  hosted_zone_id = var.hosted_zone_id != "" ? var.hosted_zone_id : aws_route53_zone.main[0].zone_id
+  full_domain    = "${var.subdomain}.${var.domain_name}"
+}
+
+# Route53 A record pointing directly to EC2 instance
+resource "aws_route53_record" "heppi" {
+  zone_id = local.hosted_zone_id
+  name    = local.full_domain
+  type    = "A"
+  ttl     = 300
+  records = [aws_instance.heppi.public_ip]
 }
 
 # Output the public IP
@@ -136,5 +163,30 @@ output "instance_public_dns" {
 output "ssh_command" {
   value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ec2-user@${aws_instance.heppi.public_ip}"
   description = "SSH command to connect to the instance"
+}
+
+output "ecr_repository_url" {
+  value       = aws_ecr_repository.heppi.repository_url
+  description = "ECR repository URL for pushing container images"
+}
+
+output "ecr_login_command" {
+  value       = "aws ecr get-login-password --region ${var.aws_region} | podman login --username AWS --password-stdin ${aws_ecr_repository.heppi.repository_url}"
+  description = "Command to login to ECR with Podman"
+}
+
+output "application_url" {
+  value       = "https://${local.full_domain}"
+  description = "URL to access the Heppi application"
+}
+
+output "hosted_zone_id" {
+  value       = local.hosted_zone_id
+  description = "Route53 hosted zone ID"
+}
+
+output "name_servers" {
+  value       = var.hosted_zone_id == "" ? aws_route53_zone.main[0].name_servers : data.aws_route53_zone.existing[0].name_servers
+  description = "Name servers for the hosted zone (if created) - update your domain registrar with these"
 }
 

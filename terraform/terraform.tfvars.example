@@ -3,4 +3,7 @@
 
 aws_region    = "us-east-1"
 key_pair_name = "your-key-pair-name"
+domain_name   = "jyjp"
+subdomain     = "heppi"
+# hosted_zone_id = ""  # Leave empty to create new hosted zone, or provide existing zone ID
 

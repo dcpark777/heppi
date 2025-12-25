@@ -8,6 +8,7 @@ function Home({ supabase, session }) {
   const [snowEnabled, setSnowEnabled] = useState(true)
   const [smokeEnabled, setSmokeEnabled] = useState(true)
   const [treeKey, setTreeKey] = useState(0)
+  const [fireworkKey, setFireworkKey] = useState(0)
 
   const handleLogout = async () => {
     if (supabase) {
@@ -21,10 +22,20 @@ function Home({ supabase, session }) {
       {snowEnabled && <Snow />}
       
       {/* Fireworks background */}
-      <Fireworks smokeEnabled={smokeEnabled} />
+      <Fireworks key={fireworkKey} smokeEnabled={smokeEnabled} skipInitialDelay={fireworkKey > 0} />
 
       {/* Top right controls */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-3">
+        {/* Firework restart button */}
+        <button
+          onClick={() => setFireworkKey(prev => prev + 1)}
+          className="text-gray-400 hover:text-white transition-colors p-2 rounded text-lg"
+          aria-label="Restart firework animation"
+          title="Restart firework animation"
+        >
+          🎆
+        </button>
+
         {/* Tree restart button */}
         <button
           onClick={() => setTreeKey(prev => prev + 1)}

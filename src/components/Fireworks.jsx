@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import './Fireworks.css'
 
-function Fireworks({ smokeEnabled = true }) {
+function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
@@ -9,6 +9,9 @@ function Fireworks({ smokeEnabled = true }) {
     if (!canvas) return
 
     let chars, particles, ctx, w, h, current
+    // Track animation start time to allow proper restart
+    let animationStartTime = null
+    let animationFrameId = null
     // Calculate duration to keep letters lit same time (5360ms) but with faster rocket (15% instead of 33%)
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300
@@ -18,7 +21,8 @@ function Fireworks({ smokeEnabled = true }) {
       'I LOVE YOU': ['YOU', 'I LOVE']
     }
     // Wait for Christmas tree to fully appear (lights animation takes ~2.5 seconds for 50 lights)
-    let treeAppearDelay = 3000  // 3 seconds delay before fireworks start
+    // Skip delay on restart (when skipInitialDelay is true)
+    let treeAppearDelay = skipInitialDelay ? 0 : 3000  // 3 seconds delay before fireworks start (only on initial load)
 
     function makeChar(c) {
       let tmp = document.createElement('canvas')
@@ -44,7 +48,7 @@ function Fireworks({ smokeEnabled = true }) {
     function resize() {
       w = canvas.width = canvas.offsetWidth
       h = canvas.height = canvas.offsetHeight
-      particles = w < 400 ? 55 : 99
+      particles = w < 400 ? 150 : 250  // Increased particle count for more detailed letters
     }
 
     function makeChars(t) {
@@ -72,16 +76,20 @@ function Fireworks({ smokeEnabled = true }) {
     }
 
     function render(t) {
+      // Calculate relative time from animation start
+      // Convert requestAnimationFrame timestamp to milliseconds to match performance.now()
+      let relativeTime = (t - animationStartTime)
+      
       // Wait for tree to appear before starting fireworks
-      if (t < treeAppearDelay) {
-        requestAnimationFrame(render)
+      if (relativeTime < treeAppearDelay) {
+        animationFrameId = requestAnimationFrame(render)
         return
       }
       
       // Adjust time to account for delay
-      let adjustedTime = t - treeAppearDelay
+      let adjustedTime = relativeTime - treeAppearDelay
       makeChars(adjustedTime)
-      requestAnimationFrame(render)
+      animationFrameId = requestAnimationFrame(render)
       // Use rgba to match the dark blue background (#0a0e13) with higher opacity for faster fade
       // Only apply if smoke is enabled
       if (smokeEnabled) {
@@ -168,15 +176,25 @@ function Fireworks({ smokeEnabled = true }) {
 
     ctx = canvas.getContext('2d')
     resize()
-    requestAnimationFrame(render)
+    // Clear canvas immediately and fill with background
+    ctx.fillStyle = 'rgba(10, 14, 19, 1)'
+    ctx.fillRect(0, 0, w, h)
+    // Initialize start time immediately to avoid lag
+    animationStartTime = performance.now()
+    // Start animation immediately instead of waiting for next frame
+    animationFrameId = requestAnimationFrame(render)
 
     const handleResize = () => resize()
     window.addEventListener('resize', handleResize)
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      // Cancel any pending animation frames
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId)
+      }
     }
-  }, [smokeEnabled])
+  }, [smokeEnabled, skipInitialDelay])
 
   return <canvas ref={canvasRef} className="fireworks-canvas" />
 }

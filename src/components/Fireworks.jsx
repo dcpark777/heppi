@@ -245,10 +245,12 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
         let dx = fixedX !== null ? fixedX : (Math.random() * 0.6 + 0.2) * w
         let dy = fixedY !== null ? fixedY : (Math.random() * 0.4 + 0.2) * h
         
-        if (normalizedTime < rocketPhaseRatio) {
-          rocket(dx, dy, id, normalizedTime / rocketPhaseRatio)
+        // Use slower rocket phase for regular fireworks (25% instead of 15%)
+        let regularRocketPhaseRatio = 0.25
+        if (normalizedTime < regularRocketPhaseRatio) {
+          rocket(dx, dy, id, normalizedTime / regularRocketPhaseRatio)
         } else {
-          regularExplosion(pts, dx, dy, id, Math.min(1, Math.max(0, (normalizedTime - rocketPhaseRatio) / (1 - rocketPhaseRatio))))
+          regularExplosion(pts, dx, dy, id, Math.min(1, Math.max(0, (normalizedTime - regularRocketPhaseRatio) / (1 - regularRocketPhaseRatio))))
         }
         return
       }

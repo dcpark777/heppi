@@ -98,11 +98,28 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
       let actual = parseInt(t / duration) % str.length
       let currentStr = str[actual]
       
-      // Once we reach REGULAR_FIREWORKS, stay in continuous mode
-      if (currentStr === 'REGULAR_FIREWORKS' && !inContinuousFireworks) {
+      // Start continuous fireworks right after "I LOVE YOU" completes
+      // "I LOVE YOU" is at index 1, so when we move past it (actual >= 2), start continuous mode
+      if (actual >= 2 && !inContinuousFireworks) {
         inContinuousFireworks = true
         chars = []
         lastFireworkTime = t
+      }
+      
+      // Start continuous fireworks earlier - right as "I LOVE YOU" is finishing
+      // Start when we're at 90% through "I LOVE YOU" (1.9 * duration) to reduce lag
+      if (t >= duration * 1.9 && !inContinuousFireworks) {
+        inContinuousFireworks = true
+        chars = []
+        lastFireworkTime = t - fireworkInterval  // Start first firework immediately
+      }
+      
+      // Also check if we're past the "I LOVE YOU" duration (2 * duration)
+      // This ensures we start even if the above check didn't trigger
+      if (t >= duration * 2 && !inContinuousFireworks) {
+        inContinuousFireworks = true
+        chars = []
+        lastFireworkTime = t - fireworkInterval  // Start first firework immediately
       }
       
       // If in continuous fireworks mode, generate new fireworks at intervals
@@ -111,24 +128,29 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
         if (t - lastFireworkTime >= fireworkInterval) {
           // Position fireworks around the tree (avoid center-bottom where tree is)
           // Tree is at bottom center, so position in:
-          // - Upper portion of screen (above tree)
+          // - Very high (top of screen)
+          // - Upper portion (above tree)
           // - Sides of screen (left and right of tree)
           // - Avoid center-bottom area
           let positionType = Math.random()
           let dx, dy
           
-          if (positionType < 0.4) {
-            // 40% chance: Upper portion (above tree)
+          if (positionType < 0.35) {
+            // 35% chance: Very high (top of screen) - increased from 25%
             dx = (Math.random() * 0.8 + 0.1) * w  // 10% to 90% width
-            dy = (Math.random() * 0.35 + 0.15) * h  // 15% to 50% from top
-          } else if (positionType < 0.7) {
-            // 30% chance: Left side
+            dy = (Math.random() * 0.12 + 0.03) * h  // 3% to 15% from top (higher - was 5-20%)
+          } else if (positionType < 0.65) {
+            // 30% chance: Upper portion (above tree) - moved higher
+            dx = (Math.random() * 0.8 + 0.1) * w  // 10% to 90% width
+            dy = (Math.random() * 0.20 + 0.15) * h  // 15% to 35% from top (higher - was 20-45%)
+          } else if (positionType < 0.80) {
+            // 15% chance: Left side (higher)
             dx = (Math.random() * 0.3 + 0.05) * w  // 5% to 35% width
-            dy = (Math.random() * 0.5 + 0.3) * h  // 30% to 80% from top
+            dy = (Math.random() * 0.30 + 0.20) * h  // 20% to 50% from top (higher - was 25-65%)
           } else {
-            // 30% chance: Right side
+            // 20% chance: Right side (higher)
             dx = (Math.random() * 0.3 + 0.65) * w  // 65% to 95% width
-            dy = (Math.random() * 0.5 + 0.3) * h  // 30% to 80% from top
+            dy = (Math.random() * 0.30 + 0.20) * h  // 20% to 50% from top (higher - was 25-65%)
           }
           
           if (!chars) chars = []

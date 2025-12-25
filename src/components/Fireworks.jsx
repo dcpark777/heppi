@@ -16,8 +16,9 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300
     let rocketPhaseRatio = 0.15  // Reduced from 0.33 to make rocket faster
-    let str = ['MERRY', 'CHRISTMAS', 'I LOVE YOU']
+    let str = ['MERRY CHRISTMAS', 'I LOVE YOU']
     let multilineStrings = {
+      'MERRY CHRISTMAS': ['MERRY', 'CHRISTMAS'],
       'I LOVE YOU': ['YOU', 'I LOVE']
     }
     // Wait for Christmas tree to fully appear (lights animation takes ~2.5 seconds for 50 lights)
@@ -134,9 +135,10 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
       // Note: In explosion function, position is h - y, so larger dy = higher on screen
       let dy = h * 0.75  // Higher position (25% from top) to ensure letters are clearly above tree
       // For multiline, offset vertically based on line index
+      // Invert the formula so lineIndex 0 (first line) appears above lineIndex 1 (second line)
       if (totalLines > 1) {
         let lineSpacing = h * 0.20  // Slightly reduced spacing to keep lines closer together
-        dy += (lineIndex - (totalLines - 1) / 2) * lineSpacing
+        dy += ((totalLines - 1) / 2 - lineIndex) * lineSpacing
       }
       // Reduced vertical variation
       dy += Math.sin(id * 4547.411) * h * 0.03

@@ -127,9 +127,9 @@
 @media (max-width: 430px) and (min-height: 840px) {
   .tree {
     height: 48vmin;
-    width: 24vmin;
+    width: 28vmin;
     min-height: 340px;
-    min-width: 170px;
+    min-width: 200px;
   }
   
   .tree-container {

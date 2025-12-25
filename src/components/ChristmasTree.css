@@ -17,11 +17,11 @@
 .tree {
   position: relative;
   height: 60vmin;
-  width: 30vmin;
+  width: 42vmin;
   min-height: 360px;
-  min-width: 180px;
+  min-width: 252px;
   max-height: 600px;
-  max-width: 300px;
+  max-width: 420px;
   transform-style: preserve-3d;
   animation: spin 2s infinite linear;
   overflow: visible;
@@ -104,7 +104,7 @@
 @media (max-width: 768px) {
   .tree {
     height: 55vmin;
-    width: 27.5vmin;
+    width: 38vmin;
   }
   
   .tree-container {
@@ -115,7 +115,7 @@
 @media (max-width: 480px) {
   .tree {
     height: 50vmin;
-    width: 25vmin;
+    width: 35vmin;
   }
   
   .tree-container {
@@ -127,9 +127,9 @@
 @media (max-width: 430px) and (min-height: 840px) {
   .tree {
     height: 48vmin;
-    width: 28vmin;
+    width: 38vmin;
     min-height: 340px;
-    min-width: 200px;
+    min-width: 270px;
   }
   
   .tree-container {

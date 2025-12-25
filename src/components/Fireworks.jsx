@@ -135,22 +135,23 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
           let positionType = Math.random()
           let dx, dy
           
-          if (positionType < 0.35) {
-            // 35% chance: Very high (top of screen) - increased from 25%
+          if (positionType < 0.40) {
+            // 40% chance: Very high (top of screen) - even higher
+            // Note: dy uses h - y, so larger dy = higher on screen
             dx = (Math.random() * 0.8 + 0.1) * w  // 10% to 90% width
-            dy = (Math.random() * 0.12 + 0.03) * h  // 3% to 15% from top (higher - was 5-20%)
-          } else if (positionType < 0.65) {
-            // 30% chance: Upper portion (above tree) - moved higher
+            dy = (Math.random() * 0.10 + 0.85) * h  // 85% to 95% of h = 5% to 15% from top
+          } else if (positionType < 0.70) {
+            // 30% chance: Upper portion (above tree) - moved even higher
             dx = (Math.random() * 0.8 + 0.1) * w  // 10% to 90% width
-            dy = (Math.random() * 0.20 + 0.15) * h  // 15% to 35% from top (higher - was 20-45%)
-          } else if (positionType < 0.80) {
+            dy = (Math.random() * 0.15 + 0.70) * h  // 70% to 85% of h = 15% to 30% from top
+          } else if (positionType < 0.85) {
             // 15% chance: Left side (higher)
             dx = (Math.random() * 0.3 + 0.05) * w  // 5% to 35% width
-            dy = (Math.random() * 0.30 + 0.20) * h  // 20% to 50% from top (higher - was 25-65%)
+            dy = (Math.random() * 0.20 + 0.60) * h  // 60% to 80% of h = 20% to 40% from top
           } else {
-            // 20% chance: Right side (higher)
+            // 15% chance: Right side (higher)
             dx = (Math.random() * 0.3 + 0.65) * w  // 65% to 95% width
-            dy = (Math.random() * 0.30 + 0.20) * h  // 20% to 50% from top (higher - was 25-65%)
+            dy = (Math.random() * 0.20 + 0.60) * h  // 60% to 80% of h = 20% to 40% from top
           }
           
           if (!chars) chars = []

@@ -12,15 +12,19 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
     // Track animation start time to allow proper restart
     let animationStartTime = null
     let animationFrameId = null
+    let inContinuousFireworks = false
+    let lastFireworkTime = 0
+    let fireworkInterval = 800  // Generate new firework every 800ms
     // Calculate duration to keep letters lit same time (5360ms) but with faster rocket (15% instead of 33%)
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300
     let rocketPhaseRatio = 0.15  // Reduced from 0.33 to make rocket faster
-    let str = ['MERRY CHRISTMAS', 'I LOVE YOU']
+    let str = ['MERRY CHRISTMAS', 'I LOVE YOU', 'REGULAR_FIREWORKS']
     let multilineStrings = {
       'MERRY CHRISTMAS': ['MERRY', 'CHRISTMAS'],
-      'I LOVE YOU': ['YOU', 'I LOVE']
+      'I LOVE YOU': ['I LOVE', 'YOU']
     }
+    let regularFireworksCount = 5  // Number of regular fireworks to display
     // Wait for Christmas tree to fully appear (lights animation takes ~2.5 seconds for 50 lights)
     // Skip delay on restart (when skipInitialDelay is true)
     let treeAppearDelay = skipInitialDelay ? 0 : 3000  // 3 seconds delay before fireworks start (only on initial load)
@@ -52,13 +56,68 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
       particles = w < 400 ? 150 : 250  // Increased particle count for more detailed letters
     }
 
+    function makeRegularFireworkParticles() {
+      // Generate circular particle pattern for regular fireworks
+      let fireworkParticles = []
+      let particleCount = particles
+      for (let i = 0; i < particleCount; i++) {
+        let angle = (i / particleCount) * Math.PI * 2
+        let radius = 50 + Math.random() * 30  // Random radius for variation
+        fireworkParticles.push([
+          Math.cos(angle) * radius,
+          Math.sin(angle) * radius
+        ])
+      }
+      return fireworkParticles
+    }
+
     function makeChars(t) {
+      // Check if we should enter continuous fireworks mode
       let actual = parseInt(t / duration) % str.length
+      let currentStr = str[actual]
+      
+      // Once we reach REGULAR_FIREWORKS, stay in continuous mode
+      if (currentStr === 'REGULAR_FIREWORKS' && !inContinuousFireworks) {
+        inContinuousFireworks = true
+        chars = []
+        lastFireworkTime = t
+      }
+      
+      // If in continuous fireworks mode, generate new fireworks at intervals
+      if (inContinuousFireworks) {
+        // Generate new firework if enough time has passed
+        if (t - lastFireworkTime >= fireworkInterval) {
+          let dx = (Math.random() * 0.6 + 0.2) * w  // 20% to 80% of screen width
+          let dy = (Math.random() * 0.4 + 0.2) * h  // 20% to 60% from top
+          if (!chars) chars = []
+          chars.push({ 
+            particles: makeRegularFireworkParticles(), 
+            lineIndex: 0, 
+            totalLines: 1,
+            isRegular: true,
+            fixedX: dx,
+            fixedY: dy,
+            startTime: t  // Track when this firework started
+          })
+          lastFireworkTime = t
+        }
+        // Remove old fireworks that have finished (older than duration)
+        if (chars) {
+          chars = chars.filter(charData => {
+            if (charData.isRegular && charData.startTime !== undefined) {
+              return (t - charData.startTime) < duration
+            }
+            return true
+          })
+        }
+        return
+      }
+      
+      // Normal cycling for letter fireworks
       if (current === actual && chars)
         return
       current = actual
       
-      let currentStr = str[actual]
       // Check if this string should be displayed on multiple lines
       if (multilineStrings[currentStr]) {
         // For multiline strings, create chars for all lines
@@ -67,12 +126,12 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
           let lineChars = [...line].filter(c => c !== ' ').map(c => makeChar(c))
           // Store line index with each char set for positioning
           lineChars.forEach(charParticles => {
-            chars.push({ particles: charParticles, lineIndex: lineIndex, totalLines: multilineStrings[currentStr].length })
+            chars.push({ particles: charParticles, lineIndex: lineIndex, totalLines: multilineStrings[currentStr].length, isRegular: false })
           })
         })
       } else {
         // Single line - filter out spaces and map each character
-        chars = [...currentStr].filter(c => c !== ' ').map(c => ({ particles: makeChar(c), lineIndex: 0, totalLines: 1 }))
+        chars = [...currentStr].filter(c => c !== ' ').map(c => ({ particles: makeChar(c), lineIndex: 0, totalLines: 1, isRegular: false }))
       }
     }
 
@@ -101,11 +160,32 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
         ctx.clearRect(0, 0, w, h)
       }
       if (chars && chars.length > 0) {
-        chars.forEach((charData, i) => firework(adjustedTime, i, charData.particles, charData.lineIndex, charData.totalLines))
+        chars.forEach((charData, i) => firework(adjustedTime, i, charData.particles, charData.lineIndex, charData.totalLines, charData.isRegular, charData.fixedX, charData.fixedY, charData.startTime))
       }
     }
 
-    function firework(t, i, pts, lineIndex = 0, totalLines = 1) {
+    function firework(t, i, pts, lineIndex = 0, totalLines = 1, isRegular = false, fixedX = null, fixedY = null, startTime = null) {
+      // For regular fireworks in continuous mode, use relative time from start
+      if (isRegular && startTime !== null && startTime !== undefined) {
+        let fireworkTime = t - startTime
+        if (fireworkTime < 0 || fireworkTime > duration) {
+          return
+        }
+        let id = i + (startTime * 1000)  // Unique ID based on start time
+        let normalizedTime = fireworkTime / duration
+        
+        // Use fixed positions set when firework was created
+        let dx = fixedX !== null ? fixedX : (Math.random() * 0.6 + 0.2) * w
+        let dy = fixedY !== null ? fixedY : (Math.random() * 0.4 + 0.2) * h
+        
+        if (normalizedTime < rocketPhaseRatio) {
+          rocket(dx, dy, id, normalizedTime / rocketPhaseRatio)
+        } else {
+          regularExplosion(pts, dx, dy, id, Math.min(1, Math.max(0, (normalizedTime - rocketPhaseRatio) / (1 - rocketPhaseRatio))))
+        }
+        return
+      }
+      
       // Get the current string index
       let currentStringIndex = parseInt(t / duration) % str.length
       // Calculate time within current cycle
@@ -170,6 +250,19 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
       })
     }
 
+    function regularExplosion(pts, x, y, id, t) {
+      let dy = (t * t * t) * 20
+      let r = Math.sin(id) * 0.5 + 2  // Slightly larger particles for regular fireworks
+      r = t < 0.5 ? (t + 0.5) * t * r : r - t * r
+      // Vibrant colors for regular fireworks
+      ctx.fillStyle = `hsl(${id * 55}, 100%, 85%)`
+      pts.forEach((xy, i) => {
+        if (i % 15 === 0)
+          ctx.fillStyle = `hsl(${id * 55 + i * 10}, 100%, ${85 + t * Math.sin(t * 55 + i) * 15}%)`
+        circle(t * xy[0] + x, h - y + t * xy[1] + dy, r)
+      })
+    }
+
     function circle(x, y, r) {
       ctx.beginPath()
       ctx.ellipse(x, y, r, r, 0, 0, 6.283)
@@ -183,6 +276,9 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
     ctx.fillRect(0, 0, w, h)
     // Initialize start time immediately to avoid lag
     animationStartTime = performance.now()
+    // Reset continuous fireworks flag on restart
+    inContinuousFireworks = false
+    lastFireworkTime = 0
     // Start animation immediately instead of waiting for next frame
     animationFrameId = requestAnimationFrame(render)
 

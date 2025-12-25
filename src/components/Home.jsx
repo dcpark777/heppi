@@ -7,6 +7,7 @@ function Home({ supabase, session }) {
   const [showLogout, setShowLogout] = useState(false)
   const [snowEnabled, setSnowEnabled] = useState(true)
   const [smokeEnabled, setSmokeEnabled] = useState(true)
+  const [treeKey, setTreeKey] = useState(0)
 
   const handleLogout = async () => {
     if (supabase) {
@@ -24,6 +25,16 @@ function Home({ supabase, session }) {
 
       {/* Top right controls */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-3">
+        {/* Tree restart button */}
+        <button
+          onClick={() => setTreeKey(prev => prev + 1)}
+          className="text-gray-400 hover:text-white transition-colors p-2 rounded text-lg"
+          aria-label="Restart tree animation"
+          title="Restart tree animation"
+        >
+          🎄
+        </button>
+
         {/* Snow toggle button */}
         <button
           onClick={() => setSnowEnabled(!snowEnabled)}
@@ -58,7 +69,7 @@ function Home({ supabase, session }) {
 
       <main className="flex items-center justify-center w-full max-w-full overflow-visible relative z-10 pb-4">
         <div className="w-full flex justify-center overflow-visible">
-          <ChristmasTree />
+          <ChristmasTree key={treeKey} />
         </div>
       </main>
     </div>

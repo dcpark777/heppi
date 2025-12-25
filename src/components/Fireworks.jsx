@@ -151,11 +151,11 @@ function Fireworks({ smokeEnabled = true }) {
       let dy = (t * t * t) * 20
       let r = Math.sin(id) * 0.5 + 1.5
       r = t < 0.5 ? (t + 0.5) * t * r : r - t * r
-      // Brighter letters - increased lightness to 100% (maximum brightness)
-      ctx.fillStyle = `hsl(${id * 55}, 80%, 100%)`
+      // Maximum vibrant letters - 100% saturation for most intense colors with bright lightness (90%)
+      ctx.fillStyle = `hsl(${id * 55}, 100%, 90%)`
       pts.forEach((xy, i) => {
         if (i % 20 === 0)
-          ctx.fillStyle = `hsl(${id * 55}, 80%, ${100 - t * Math.sin(t * 55 + i) * 5}%)`
+          ctx.fillStyle = `hsl(${id * 55}, 100%, ${90 + t * Math.sin(t * 55 + i) * 10}%)`
         circle(t * xy[0] + x, h - y + t * xy[1] + dy, r)
       })
     }

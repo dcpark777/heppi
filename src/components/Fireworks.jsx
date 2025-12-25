@@ -14,7 +14,7 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
     let animationFrameId = null
     let inContinuousFireworks = false
     let lastFireworkTime = 0
-    let fireworkInterval = 800  // Generate new firework every 800ms
+    let fireworkInterval = 600  // Generate new firework every 600ms (more frequent)
     // Calculate duration to keep letters lit same time (5360ms) but with faster rocket (15% instead of 33%)
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300

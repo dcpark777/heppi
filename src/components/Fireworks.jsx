@@ -19,10 +19,10 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
     // If explosion is 85% of total and should be 5360ms, then total = 5360 / 0.85 = 6306ms
     let duration = 6300
     let rocketPhaseRatio = 0.15  // Reduced from 0.33 to make rocket faster
-    let str = ['MERRY CHRISTMAS', 'I LOVE YOU', 'REGULAR_FIREWORKS']
+    let str = ['MERRY CHRISTMAS MY JIHEE', 'I LOVE YOU BABY', 'REGULAR_FIREWORKS']
     let multilineStrings = {
-      'MERRY CHRISTMAS': ['MERRY', 'CHRISTMAS'],
-      'I LOVE YOU': ['I LOVE', 'YOU']
+      'MERRY CHRISTMAS MY JIHEE': ['MERRY', 'CHRISTMAS', 'MY JIHEE'],
+      'I LOVE YOU BABY': ['I LOVE YOU', 'BABY']
     }
     let regularFireworksCount = 5  // Number of regular fireworks to display
     // Wait for Christmas tree to fully appear (lights animation takes ~2.5 seconds for 50 lights)
@@ -106,15 +106,15 @@ function Fireworks({ smokeEnabled = true, skipInitialDelay = false }) {
         lastFireworkTime = t
       }
       
-      // Start continuous fireworks earlier - right as "I LOVE YOU" is finishing
-      // Start when we're at 90% through "I LOVE YOU" (1.9 * duration) to reduce lag
+      // Start continuous fireworks earlier - right as "I LOVE YOU BABY" is finishing
+      // Start when we're at 90% through "I LOVE YOU BABY" (1.9 * duration) to reduce lag
       if (t >= duration * 1.9 && !inContinuousFireworks) {
         inContinuousFireworks = true
         chars = []
         lastFireworkTime = t - fireworkInterval  // Start first firework immediately
       }
       
-      // Also check if we're past the "I LOVE YOU" duration (2 * duration)
+      // Also check if we're past the "I LOVE YOU BABY" duration (2 * duration)
       // This ensures we start even if the above check didn't trigger
       if (t >= duration * 2 && !inContinuousFireworks) {
         inContinuousFireworks = true

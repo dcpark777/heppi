@@ -6,7 +6,7 @@ function PasswordAuth({ onSuccess }) {
   const [loading, setLoading] = useState(false)
 
   // Get password from environment variable, default to a simple password
-  const correctPassword = import.meta.env.VITE_SITE_PASSWORD || 'sydplove'
+  const correctPassword = import.meta.env.VITE_SITE_PASSWORD || '030825'
 
   const handleSubmit = (e) => {
     e.preventDefault()

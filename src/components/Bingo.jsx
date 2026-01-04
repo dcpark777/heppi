@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { 
-  saveBingoCard, 
+  saveBingoTile, 
   loadBingoCard, 
   recordStatusChange 
 } from '../services/bingoStorage'
@@ -93,35 +93,39 @@ function Bingo() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
-  const saveTimeoutRef = useRef(null)
+  const saveTimeoutRefs = useRef({}) // Track save timeouts per tile
+  const isInitialLoadRef = useRef(true) // Track if we're still loading initial data
 
   // Load bingo card on mount
   useEffect(() => {
     loadCard()
   }, [])
 
-  // Save on page unload to ensure nothing is lost
+  // Save on page unload to ensure nothing is lost (only if user made changes)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Save immediately before page unload
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
+      // Only save if we've finished loading and there might be unsaved changes
+      if (!isInitialLoadRef.current) {
+        // Save all pending tiles immediately
+        tiles.forEach((row, rowIndex) => {
+          row.forEach((tile, colIndex) => {
+            const key = `${rowIndex}-${colIndex}`
+            if (saveTimeoutRefs.current[key]) {
+              clearTimeout(saveTimeoutRefs.current[key])
+              delete saveTimeoutRefs.current[key]
+            }
+            // Save immediately
+            saveBingoTile(CARD_ID, rowIndex, colIndex, tile.content, tile.completed).catch(err => 
+              console.error(`Failed to save tile ${rowIndex}-${colIndex} on unload:`, err)
+            )
+          })
+        })
       }
-      saveBingoCard(CARD_ID, tiles).catch(err => 
-        console.error('Failed to save on unload:', err)
-      )
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      // Also save on component unmount
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-      saveBingoCard(CARD_ID, tiles).catch(err => 
-        console.error('Failed to save on unmount:', err)
-      )
     }
   }, [tiles])
 
@@ -157,43 +161,46 @@ function Bingo() {
       // On error, keep the default empty tiles
     } finally {
       setLoading(false)
+      // Mark that initial load is complete - now saves are allowed
+      isInitialLoadRef.current = false
     }
   }
 
-  // Save bingo card (debounced)
-  const saveCard = useCallback(async (tilesToSave) => {
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current)
+  // Save a single tile (debounced) - only saves if not initial load
+  const saveTile = useCallback(async (row, col, content, completed) => {
+    // Don't save during initial load
+    if (isInitialLoadRef.current) {
+      console.log('⏸️ Skipping save - still loading initial data')
+      return
+    }
+
+    const key = `${row}-${col}`
+    
+    // Clear existing timeout for this tile
+    if (saveTimeoutRefs.current[key]) {
+      clearTimeout(saveTimeoutRefs.current[key])
     }
 
     // Set new timeout to debounce saves
-    saveTimeoutRef.current = setTimeout(async () => {
-      // Log what we're about to save
-      const tilesWithContent = tilesToSave.flat().filter(t => t.content && t.content.trim() !== '')
-      console.log('💾 saveCard called with:', {
-        totalTiles: tilesToSave.flat().length,
-        tilesWithContent: tilesWithContent.length,
-        sampleTiles: tilesWithContent.slice(0, 3).map(t => ({ content: t.content, completed: t.completed }))
-      })
-      
+    saveTimeoutRefs.current[key] = setTimeout(async () => {
       setSaving(true)
       setSaveError(null)
       try {
-        const result = await saveBingoCard(CARD_ID, tilesToSave)
+        const result = await saveBingoTile(CARD_ID, row, col, content, completed)
         if (!result.success) {
           setSaveError('Failed to save - check console for details')
           console.error('Save failed:', result)
         } else if (result.fallback) {
           setSaveError('Saved locally only - not synced to cloud')
         } else {
-          console.log('✅ Save completed successfully')
+          console.log(`✅ Tile ${row}-${col} saved successfully`)
         }
       } catch (error) {
-        console.error('Failed to save bingo card:', error)
+        console.error(`Failed to save tile ${row}-${col}:`, error)
         setSaveError('Save failed - check console')
       } finally {
         setSaving(false)
+        delete saveTimeoutRefs.current[key]
         // Clear error after 5 seconds
         if (saveError) {
           setTimeout(() => setSaveError(null), 5000)
@@ -207,15 +214,16 @@ function Bingo() {
     setTiles(prev => {
       const newTiles = [...prev]
       newTiles[row] = [...newTiles[row]]
-      newTiles[row][col] = {
+      const updatedTile = {
         ...newTiles[row][col],
         content: value
       }
+      newTiles[row][col] = updatedTile
       
-      console.log('📝 New tile state:', newTiles[row][col])
+      console.log('📝 New tile state:', updatedTile)
       
-      // Save card state (stores latest content)
-      saveCard(newTiles)
+      // Save individual tile
+      saveTile(row, col, updatedTile.content, updatedTile.completed)
       
       return newTiles
     })
@@ -228,10 +236,11 @@ function Bingo() {
       const newStatus = !oldStatus
       
       newTiles[row] = [...newTiles[row]]
-      newTiles[row][col] = {
+      const updatedTile = {
         ...newTiles[row][col],
         completed: newStatus
       }
+      newTiles[row][col] = updatedTile
       
       // Record status change
       if (oldStatus !== newStatus) {
@@ -240,8 +249,8 @@ function Bingo() {
         )
       }
       
-      // Save card state
-      saveCard(newTiles)
+      // Save individual tile
+      saveTile(row, col, updatedTile.content, updatedTile.completed)
       
       return newTiles
     })

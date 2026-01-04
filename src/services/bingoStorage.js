@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
+import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
 
 // Check if AWS is configured
 const isAWSConfigured = () => {
@@ -61,7 +61,120 @@ const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || 'bingo-cards'
 const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || 'bingo-changes'
 
 /**
- * Save bingo card state (content and status)
+ * Generate tile ID for a specific tile
+ */
+function getTileId(cardId, row, col) {
+  return `${cardId}-${row}-${col}`
+}
+
+/**
+ * Save a single bingo tile independently
+ */
+export async function saveBingoTile(cardId, row, col, content, completed) {
+  const tileId = getTileId(cardId, row, col)
+  
+  console.log('💾 saveBingoTile called:', {
+    tileId,
+    cardId,
+    row,
+    col,
+    content: content.substring(0, 50),
+    completed
+  })
+
+  if (!isAWSConfigured() || !docClient) {
+    console.warn('⚠️ AWS not configured - saving to localStorage as fallback')
+    try {
+      // Save individual tile to localStorage
+      const key = `bingo-tile-${tileId}`
+      localStorage.setItem(key, JSON.stringify({
+        cardId,
+        row,
+        col,
+        content,
+        completed,
+        updatedAt: new Date().toISOString(),
+      }))
+      console.log('✅ Saved tile to localStorage')
+      return { success: true, fallback: true }
+    } catch (error) {
+      console.error('❌ Failed to save to localStorage:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  try {
+    const item = {
+      tileId, // Partition key: cardId-row-col
+      cardId,
+      row,
+      col,
+      content: content || '',
+      completed: completed || false,
+      updatedAt: new Date().toISOString(),
+    }
+
+    console.log('💾 Saving tile to DynamoDB:', { 
+      tileId, 
+      table: BINGO_CARD_TABLE,
+      content: content.substring(0, 50)
+    })
+    
+    const result = await docClient.send(
+      new PutCommand({
+        TableName: BINGO_CARD_TABLE,
+        Item: item,
+      })
+    )
+
+    console.log('✅ Successfully saved tile to DynamoDB', {
+      requestId: result.$metadata?.requestId,
+      httpStatusCode: result.$metadata?.httpStatusCode
+    })
+    return { success: true }
+  } catch (error) {
+    console.error('❌ Error saving tile to DynamoDB:', error)
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      requestId: error.$metadata?.requestId,
+      statusCode: error.$metadata?.httpStatusCode
+    })
+    
+    // Check for specific error types
+    if (error.message?.includes('CORS') || error.message?.includes('Network') || error.name === 'NetworkError' || error.code === 'NetworkingError') {
+      console.error('⚠️ CORS or Network Error - DynamoDB cannot be accessed directly from browser')
+      console.error('💡 Solution: Use a backend API (Vercel Serverless Functions)')
+    }
+    
+    if (error.name === 'AccessDeniedException' || error.code === 'AccessDeniedException') {
+      console.error('⚠️ Access Denied - Check IAM permissions')
+    }
+    
+    // Fallback to localStorage on error
+    try {
+      const key = `bingo-tile-${tileId}`
+      localStorage.setItem(key, JSON.stringify({
+        cardId,
+        row,
+        col,
+        content,
+        completed,
+        updatedAt: new Date().toISOString(),
+      }))
+      console.warn('✅ Fell back to localStorage - tile saved locally but NOT synced to DynamoDB')
+      return { success: true, fallback: true }
+    } catch (localError) {
+      console.error('❌ Failed to save even to localStorage:', localError)
+      return { success: false, error: error.message }
+    }
+  }
+}
+
+/**
+ * Save bingo card state (content and status) - DEPRECATED, use saveBingoTile instead
+ * Kept for backward compatibility
  */
 export async function saveBingoCard(cardId, tiles) {
   // Log what we're trying to save
@@ -152,55 +265,103 @@ export async function saveBingoCard(cardId, tiles) {
 }
 
 /**
- * Load bingo card state
+ * Load bingo card state - loads all tiles for a card
  */
 export async function loadBingoCard(cardId) {
   if (!isAWSConfigured() || !docClient) {
     console.warn('AWS not configured - loading from localStorage as fallback')
     try {
-      const stored = localStorage.getItem(`bingo-card-${cardId}`)
-      if (stored) {
-        const data = JSON.parse(stored)
-        return {
-          success: true,
-          tiles: data.tiles,
-          updatedAt: data.updatedAt,
+      // Load all tiles from localStorage
+      const tiles = []
+      for (let row = 0; row < 5; row++) {
+        tiles[row] = []
+        for (let col = 0; col < 5; col++) {
+          const tileId = getTileId(cardId, row, col)
+          const key = `bingo-tile-${tileId}`
+          const stored = localStorage.getItem(key)
+          if (stored) {
+            const data = JSON.parse(stored)
+            tiles[row][col] = {
+              content: data.content || '',
+              completed: data.completed || false
+            }
+          } else {
+            tiles[row][col] = { content: '', completed: false }
+          }
         }
       }
-      return { success: true, tiles: null }
+      return {
+        success: true,
+        tiles,
+        fallback: true
+      }
     } catch (error) {
       return { success: false, error: error.message }
     }
   }
 
   try {
-    console.log('Loading from DynamoDB:', { cardId, table: BINGO_CARD_TABLE })
-    const result = await docClient.send(
-      new GetCommand({
-        TableName: BINGO_CARD_TABLE,
-        Key: { cardId },
-      })
-    )
-
-    console.log('DynamoDB response:', result)
-
-    if (result.Item) {
-      console.log('Successfully loaded from DynamoDB, parsing tiles...')
-      // The tiles are stored as a JSON string, so we need to parse them
-      const tilesData = typeof result.Item.tiles === 'string' 
-        ? JSON.parse(result.Item.tiles)
-        : result.Item.tiles
-      
-      console.log('Parsed tiles:', tilesData)
-      return {
-        success: true,
-        tiles: tilesData,
-        updatedAt: result.Item.updatedAt,
-      }
+    console.log('Loading tiles from DynamoDB:', { cardId, table: BINGO_CARD_TABLE })
+    
+    // Try to use GSI first (more efficient), fall back to Scan if GSI doesn't exist
+    let result
+    try {
+      result = await docClient.send(
+        new QueryCommand({
+          TableName: BINGO_CARD_TABLE,
+          IndexName: 'cardId-index',
+          KeyConditionExpression: 'cardId = :cardId',
+          ExpressionAttributeValues: {
+            ':cardId': cardId,
+          },
+        })
+      )
+      console.log('✅ Used GSI query to load tiles')
+    } catch (gsiError) {
+      // GSI might not exist, fall back to Scan
+      console.warn('GSI not available, using Scan:', gsiError.message)
+      result = await docClient.send(
+        new ScanCommand({
+          TableName: BINGO_CARD_TABLE,
+          FilterExpression: 'cardId = :cardId',
+          ExpressionAttributeValues: {
+            ':cardId': cardId,
+          },
+        })
+      )
     }
 
-    console.log('No data found in DynamoDB for cardId:', cardId)
-    return { success: true, tiles: null }
+    console.log('DynamoDB scan result:', { itemCount: result.Items?.length || 0 })
+
+    // Initialize 5x5 grid with empty tiles
+    const tiles = Array(5).fill(null).map(() => 
+      Array(5).fill(null).map(() => ({
+        content: '',
+        completed: false
+      }))
+    )
+
+    // Populate tiles from DynamoDB results
+    if (result.Items && result.Items.length > 0) {
+      result.Items.forEach(item => {
+        const row = item.row
+        const col = item.col
+        if (row >= 0 && row < 5 && col >= 0 && col < 5) {
+          tiles[row][col] = {
+            content: item.content || '',
+            completed: item.completed || false
+          }
+        }
+      })
+      console.log('✅ Loaded', result.Items.length, 'tiles from DynamoDB')
+    } else {
+      console.log('No tiles found in DynamoDB for cardId:', cardId)
+    }
+
+    return {
+      success: true,
+      tiles,
+    }
   } catch (error) {
     console.error('❌ Error loading bingo card from DynamoDB:', error)
     console.error('Error details:', {
@@ -219,26 +380,35 @@ export async function loadBingoCard(cardId) {
         error.message?.includes('Failed to fetch') ||
         error.message?.includes('network error')) {
       console.error('⚠️ CORS or Network Error - DynamoDB cannot be accessed directly from browser')
-      console.error('💡 This is why loading from DynamoDB is not working!')
       console.error('💡 Solution: Use a backend API (Vercel Serverless Functions) or AWS Cognito')
     }
     
     // Fallback to localStorage on error
     try {
-      const stored = localStorage.getItem(`bingo-card-${cardId}`)
-      if (stored) {
-        const data = JSON.parse(stored)
-        console.warn('✅ Fell back to localStorage due to DynamoDB error')
-        console.warn('⚠️ This means data is only available on this device/browser')
-        return {
-          success: true,
-          tiles: data.tiles,
-          updatedAt: data.updatedAt,
-          fallback: true
+      const tiles = []
+      for (let row = 0; row < 5; row++) {
+        tiles[row] = []
+        for (let col = 0; col < 5; col++) {
+          const tileId = getTileId(cardId, row, col)
+          const key = `bingo-tile-${tileId}`
+          const stored = localStorage.getItem(key)
+          if (stored) {
+            const data = JSON.parse(stored)
+            tiles[row][col] = {
+              content: data.content || '',
+              completed: data.completed || false
+            }
+          } else {
+            tiles[row][col] = { content: '', completed: false }
+          }
         }
       }
-      console.log('No localStorage data found either')
-      return { success: true, tiles: null }
+      console.warn('✅ Fell back to localStorage due to DynamoDB error')
+      return {
+        success: true,
+        tiles,
+        fallback: true
+      }
     } catch (localError) {
       console.error('Failed to load from localStorage:', localError)
       return { success: false, error: error.message }

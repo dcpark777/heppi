@@ -71,20 +71,34 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
         />
         
         {/* Completion Toggle - Larger for mobile */}
-        <div className="mb-6 flex items-center gap-3">
-          <label className="flex items-center gap-3 cursor-pointer touch-manipulation">
-            <input
-              type="checkbox"
-              checked={completed}
-              onChange={(e) => setCompleted(e.target.checked)}
-              className="w-6 h-6 md:w-5 md:h-5 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 cursor-pointer touch-manipulation"
-              style={{
-                minWidth: '24px',
-                minHeight: '24px'
-              }}
-            />
-            <span className="text-white font-medium text-base md:text-sm select-none">Completed</span>
-          </label>
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-2">
+            <label className="flex items-center gap-3 cursor-pointer touch-manipulation">
+              <input
+                type="checkbox"
+                checked={completed}
+                onChange={(e) => setCompleted(e.target.checked)}
+                className="w-6 h-6 md:w-5 md:h-5 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 cursor-pointer touch-manipulation"
+                style={{
+                  minWidth: '24px',
+                  minHeight: '24px'
+                }}
+              />
+              <span className="text-white font-medium text-base md:text-sm select-none">Completed</span>
+            </label>
+          </div>
+          {/* Show completion date if tile is completed */}
+          {completed && tile.completedAt && (
+            <div className="text-gray-500 text-xs md:text-xs ml-9 md:ml-8">
+              Completed on {new Date(tile.completedAt).toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric', 
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+              })}
+            </div>
+          )}
         </div>
         
         <div className="flex gap-3 justify-end">
@@ -215,7 +229,8 @@ function Bingo() {
     return Array(5).fill(null).map(() => 
       Array(5).fill(null).map(() => ({
         content: '',
-        completed: false
+        completed: false,
+        completedAt: null
       }))
     )
   })
@@ -249,7 +264,7 @@ function Bingo() {
       // Only save if we've finished loading and there might be unsaved changes in modal
       if (!isInitialLoadRef.current && modalTile) {
         // Save the tile that's currently being edited in modal
-        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed).catch(err => 
+        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt).catch(err => 
           console.error(`Failed to save tile ${modalTile.row}-${modalTile.col} on unload:`, err)
         )
       }
@@ -333,8 +348,8 @@ function Bingo() {
 
     setSaving(true)
     setSaveError(null)
-    try {
-      const result = await saveBingoTile(CARD_ID, row, col, content, completed)
+      try {
+        const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt)
       if (!result.success) {
         setSaveError('Failed to save - check console for details')
         console.error('Save failed:', result)
@@ -370,7 +385,8 @@ function Bingo() {
       row,
       col,
       content: tile.content,
-      completed: tile.completed
+      completed: tile.completed,
+      completedAt: tile.completedAt || null
     })
   }
 
@@ -384,10 +400,15 @@ function Bingo() {
     setTiles(prev => {
       const newTiles = [...prev]
       newTiles[row] = [...newTiles[row]]
+      const now = new Date().toISOString()
       newTiles[row][col] = {
         ...newTiles[row][col],
         content: newContent,
-        completed: newCompleted
+        completed: newCompleted,
+        // Set completedAt when marking as completed, preserve if already completed, clear when uncompleted
+        completedAt: newCompleted 
+          ? (prev[row][col].completedAt || now)
+          : null
       }
       return newTiles
     })
@@ -399,8 +420,9 @@ function Bingo() {
       )
     }
     
-    // Save to DynamoDB
-    saveTile(row, col, newContent, newCompleted)
+    // Save to DynamoDB - pass the completedAt from the updated state
+    const updatedTile = tiles[row][col]
+    saveTile(row, col, newContent, newCompleted, updatedTile.completedAt)
     setModalTile(null)
   }
 

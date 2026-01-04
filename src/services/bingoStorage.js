@@ -70,7 +70,7 @@ function getTileId(cardId, row, col) {
 /**
  * Save a single bingo tile independently
  */
-export async function saveBingoTile(cardId, row, col, content, completed) {
+export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null) {
   const tileId = getTileId(cardId, row, col)
   
   console.log('💾 saveBingoTile called:', {
@@ -104,6 +104,7 @@ export async function saveBingoTile(cardId, row, col, content, completed) {
   }
 
   try {
+    const now = new Date().toISOString()
     const item = {
       tileId, // Partition key: cardId-row-col
       cardId,
@@ -111,7 +112,9 @@ export async function saveBingoTile(cardId, row, col, content, completed) {
       col,
       content: content || '',
       completed: completed || false,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
+      // Use provided completedAt, or set to now if newly completed, or null if uncompleted
+      completedAt: completedAt || (completed ? now : null),
     }
 
     console.log('💾 Saving tile to DynamoDB:', { 
@@ -280,13 +283,14 @@ export async function loadBingoCard(cardId) {
           const key = `bingo-tile-${tileId}`
           const stored = localStorage.getItem(key)
           if (stored) {
-            const data = JSON.parse(stored)
-            tiles[row][col] = {
-              content: data.content || '',
-              completed: data.completed || false
-            }
+          const data = JSON.parse(stored)
+          tiles[row][col] = {
+            content: data.content || '',
+            completed: data.completed || false,
+            completedAt: data.completedAt || null
+          }
           } else {
-            tiles[row][col] = { content: '', completed: false }
+            tiles[row][col] = { content: '', completed: false, completedAt: null }
           }
         }
       }
@@ -351,7 +355,8 @@ export async function loadBingoCard(cardId) {
     const tiles = Array(5).fill(null).map(() => 
       Array(5).fill(null).map(() => ({
         content: '',
-        completed: false
+        completed: false,
+        completedAt: null
       }))
     )
 
@@ -375,7 +380,8 @@ export async function loadBingoCard(cardId) {
         if (!isNaN(row) && !isNaN(col) && row >= 0 && row < 5 && col >= 0 && col < 5) {
           tiles[row][col] = {
             content: item.content || '',
-            completed: item.completed === true || item.completed === 'true'
+            completed: item.completed === true || item.completed === 'true',
+            completedAt: item.completedAt || null
           }
           console.log(`✅ Set tile [${row}][${col}] =`, tiles[row][col])
         } else {
@@ -423,13 +429,14 @@ export async function loadBingoCard(cardId) {
           const key = `bingo-tile-${tileId}`
           const stored = localStorage.getItem(key)
           if (stored) {
-            const data = JSON.parse(stored)
-            tiles[row][col] = {
-              content: data.content || '',
-              completed: data.completed || false
-            }
+          const data = JSON.parse(stored)
+          tiles[row][col] = {
+            content: data.content || '',
+            completed: data.completed || false,
+            completedAt: data.completedAt || null
+          }
           } else {
-            tiles[row][col] = { content: '', completed: false }
+            tiles[row][col] = { content: '', completed: false, completedAt: null }
           }
         }
       }

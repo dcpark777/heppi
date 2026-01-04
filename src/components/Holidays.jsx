@@ -4,18 +4,16 @@ import ChristmasTree from './ChristmasTree'
 import Fireworks from './Fireworks'
 import Snow from './Snow'
 
-function Holidays({ supabase, session }) {
+function Holidays() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [snowEnabled, setSnowEnabled] = useState(true)
   const [smokeEnabled, setSmokeEnabled] = useState(true)
   const [treeKey, setTreeKey] = useState(0)
   const [fireworkKey, setFireworkKey] = useState(0)
 
-  const handleLogout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut()
-    }
-    setMenuOpen(false)
+  const handleLogout = () => {
+    sessionStorage.removeItem('sydplove_authenticated')
+    window.location.href = '/'
   }
 
   return (
@@ -86,21 +84,14 @@ function Holidays({ supabase, session }) {
               ❄️ Toggle Snow
             </button>
 
-            {/* Logout (only if session exists) */}
-            {session && (
-              <>
-                <div className="border-t border-gray-800 my-1"></div>
-                <div className="px-4 py-2 text-xs text-gray-400">
-                  {session.user.email}
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
-                >
-                  Logout
-                </button>
-              </>
-            )}
+            {/* Logout */}
+            <div className="border-t border-gray-800 my-1"></div>
+            <button
+              onClick={handleLogout}
+              className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
+            >
+              Logout
+            </button>
           </div>
         )}
       </div>

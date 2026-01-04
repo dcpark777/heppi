@@ -3,12 +3,27 @@ import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } from '@a
 
 // Check if AWS is configured
 const isAWSConfigured = () => {
-  const hasAccessKey = !!import.meta.env.VITE_AWS_ACCESS_KEY_ID
-  const hasSecretKey = !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY
+  const accessKey = import.meta.env.VITE_AWS_ACCESS_KEY_ID
+  const secretKey = import.meta.env.VITE_AWS_SECRET_ACCESS_KEY
+  const hasAccessKey = !!accessKey
+  const hasSecretKey = !!secretKey
   const configured = hasAccessKey && hasSecretKey
+  
+  // Debug logging
+  console.log('AWS Config Check:', {
+    hasAccessKey,
+    hasSecretKey,
+    accessKeyPrefix: accessKey ? accessKey.substring(0, 8) + '...' : 'missing',
+    secretKeyPrefix: secretKey ? '***' : 'missing',
+    allEnvKeys: Object.keys(import.meta.env).filter(k => k.startsWith('VITE_AWS'))
+  })
   
   if (!configured) {
     console.warn('AWS not configured - missing credentials')
+    console.warn('Make sure:')
+    console.warn('1. .env file exists in project root')
+    console.warn('2. Dev server was restarted after creating .env')
+    console.warn('3. Variables are prefixed with VITE_')
   } else {
     console.log('AWS configured - using DynamoDB')
   }

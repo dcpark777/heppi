@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
 import Login from './components/Login'
 import Home from './components/Home'
+import Holidays from './components/Holidays'
+import Bingo from './components/Bingo'
 import './App.css'
 
 // Initialize Supabase client
@@ -47,18 +50,26 @@ function App() {
     )
   }
 
-  // If Supabase is not configured, show the app without auth
-  if (!supabase) {
-    return <Home />
-  }
-
-  // If user is not authenticated, show login
-  if (!session) {
-    return <Login supabase={supabase} />
-  }
-
-  // User is authenticated, show the app
-  return <Home supabase={supabase} session={session} />
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route 
+          path="/holidays" 
+          element={
+            !supabase ? (
+              <Holidays />
+            ) : !session ? (
+              <Login supabase={supabase} />
+            ) : (
+              <Holidays supabase={supabase} session={session} />
+            )
+          } 
+        />
+        <Route path="/bingo" element={<Bingo />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
 export default App

@@ -1,5 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { 
+  saveBingoCard, 
+  loadBingoCard, 
+  recordStatusChange 
+} from '../services/bingoStorage'
 
 // Component to handle contentEditable with proper cursor management
 function TileContent({ content, completed, onChange, onDoubleClick }) {
@@ -53,6 +58,9 @@ function TileContent({ content, completed, onChange, onDoubleClick }) {
 }
 
 function Bingo() {
+  // Card ID - using a fixed ID for now (could be user-specific later)
+  const CARD_ID = 'sydplove-2026-bingo'
+  
   // Initialize 5x5 grid with empty tiles
   const [tiles, setTiles] = useState(() => {
     return Array(5).fill(null).map(() => 
@@ -62,6 +70,48 @@ function Bingo() {
       }))
     )
   })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const saveTimeoutRef = useRef(null)
+
+  // Load bingo card on mount
+  useEffect(() => {
+    loadCard()
+  }, [])
+
+  const loadCard = async () => {
+    setLoading(true)
+    try {
+      const result = await loadBingoCard(CARD_ID)
+      if (result.success && result.tiles) {
+        setTiles(result.tiles)
+      }
+    } catch (error) {
+      console.error('Failed to load bingo card:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Save bingo card (debounced)
+  const saveCard = useCallback(async (tilesToSave) => {
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    // Set new timeout to debounce saves
+    saveTimeoutRef.current = setTimeout(async () => {
+      setSaving(true)
+      try {
+        await saveBingoCard(CARD_ID, tilesToSave)
+      } catch (error) {
+        console.error('Failed to save bingo card:', error)
+      } finally {
+        setSaving(false)
+      }
+    }, 1000) // Save 1 second after last change
+  }, [])
 
   const handleContentChange = (row, col, value) => {
     setTiles(prev => {
@@ -71,6 +121,10 @@ function Bingo() {
         ...newTiles[row][col],
         content: value
       }
+      
+      // Save card state (stores latest content)
+      saveCard(newTiles)
+      
       return newTiles
     })
   }
@@ -78,13 +132,44 @@ function Bingo() {
   const handleTileClick = (row, col) => {
     setTiles(prev => {
       const newTiles = [...prev]
+      const oldStatus = newTiles[row][col].completed
+      const newStatus = !oldStatus
+      
       newTiles[row] = [...newTiles[row]]
       newTiles[row][col] = {
         ...newTiles[row][col],
-        completed: !newTiles[row][col].completed
+        completed: newStatus
       }
+      
+      // Record status change
+      if (oldStatus !== newStatus) {
+        recordStatusChange(CARD_ID, row, col, oldStatus, newStatus).catch(err => 
+          console.error('Failed to record status change:', err)
+        )
+      }
+      
+      // Save card state
+      saveCard(newTiles)
+      
       return newTiles
     })
+  }
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0e13] flex items-center justify-center">
+        <div className="text-white text-xl">Loading bingo card...</div>
+      </div>
+    )
   }
 
   return (
@@ -97,6 +182,13 @@ function Bingo() {
       >
         ←
       </Link>
+
+      {/* Saving indicator */}
+      {saving && (
+        <div className="absolute top-4 right-4 z-20 bg-gray-800 text-white text-xs px-3 py-1 rounded-lg">
+          Saving...
+        </div>
+      )}
 
       <div className="w-full max-w-4xl">
         {/* Header */}

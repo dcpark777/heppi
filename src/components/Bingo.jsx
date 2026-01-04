@@ -173,6 +173,7 @@ function Bingo() {
   }, [])
 
   const handleContentChange = (row, col, value) => {
+    console.log('📝 Content changed:', { row, col, value })
     setTiles(prev => {
       const newTiles = [...prev]
       newTiles[row] = [...newTiles[row]]
@@ -180,6 +181,8 @@ function Bingo() {
         ...newTiles[row][col],
         content: value
       }
+      
+      console.log('📝 New tile state:', newTiles[row][col])
       
       // Save card state (stores latest content)
       saveCard(newTiles)

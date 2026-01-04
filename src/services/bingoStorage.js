@@ -64,15 +64,26 @@ const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || 'bingo-c
  * Save bingo card state (content and status)
  */
 export async function saveBingoCard(cardId, tiles) {
+  // Log what we're trying to save
+  const tilesWithContent = tiles.flat().filter(t => t.content && t.content.trim() !== '')
+  console.log('💾 saveBingoCard called:', {
+    cardId,
+    totalTiles: tiles.flat().length,
+    tilesWithContent: tilesWithContent.length,
+    sampleContent: tilesWithContent.slice(0, 3).map(t => t.content)
+  })
+
   if (!isAWSConfigured() || !docClient) {
-    console.warn('AWS not configured - saving to localStorage as fallback')
+    console.warn('⚠️ AWS not configured - saving to localStorage as fallback')
     try {
       localStorage.setItem(`bingo-card-${cardId}`, JSON.stringify({
         tiles,
         updatedAt: new Date().toISOString(),
       }))
-      return { success: true }
+      console.log('✅ Saved to localStorage')
+      return { success: true, fallback: true }
     } catch (error) {
+      console.error('❌ Failed to save to localStorage:', error)
       return { success: false, error: error.message }
     }
   }
@@ -84,7 +95,13 @@ export async function saveBingoCard(cardId, tiles) {
       updatedAt: new Date().toISOString(),
     }
 
-    console.log('Saving to DynamoDB:', { cardId, table: BINGO_CARD_TABLE, tileCount: tiles.length })
+    console.log('💾 Saving to DynamoDB:', { 
+      cardId, 
+      table: BINGO_CARD_TABLE, 
+      tileCount: tiles.length,
+      tilesData: JSON.stringify(tiles).substring(0, 200) + '...'
+    })
+    
     const result = await docClient.send(
       new PutCommand({
         TableName: BINGO_CARD_TABLE,
@@ -92,7 +109,10 @@ export async function saveBingoCard(cardId, tiles) {
       })
     )
 
-    console.log('Successfully saved to DynamoDB', result)
+    console.log('✅ Successfully saved to DynamoDB', {
+      requestId: result.$metadata?.requestId,
+      httpStatusCode: result.$metadata?.httpStatusCode
+    })
     return { success: true }
   } catch (error) {
     console.error('❌ Error saving bingo card to DynamoDB:', error)

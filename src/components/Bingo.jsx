@@ -57,7 +57,7 @@ function TileContent({ content, completed, isEditing, onChange, onDoubleClick })
         isFocusedRef.current = true
       }}
       onDoubleClick={onDoubleClick}
-      className={`relative z-10 w-full h-full bg-transparent text-white text-center text-xs md:text-sm font-semibold border-none outline-none ${
+      className={`relative z-10 w-full h-full bg-transparent text-white text-center font-semibold border-none outline-none ${
         completed 
           ? 'line-through opacity-50 cursor-default' 
           : isEditing
@@ -65,19 +65,21 @@ function TileContent({ content, completed, isEditing, onChange, onDoubleClick })
           : 'cursor-default'
       }`}
       style={{
+        fontSize: 'clamp(0.4rem, 1.5vw, 0.65rem)', // Responsive: min 6.4px, preferred 1.5vw, max 10.4px
         overflow: 'auto',
         wordWrap: 'break-word',
         overflowWrap: 'break-word',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '4px',
+        padding: '2px 4px',
         width: '100%',
         height: '100%',
         whiteSpace: 'normal',
         hyphens: 'auto',
         maxHeight: '100%',
-        maxWidth: '100%'
+        maxWidth: '100%',
+        lineHeight: '1.15'
       }}
       data-placeholder={content ? '' : '...'}
     />
@@ -390,7 +392,7 @@ function Bingo() {
         </div>
 
         {/* Bingo Grid */}
-        <div className="grid grid-cols-5 gap-2 md:gap-4 mb-8">
+        <div className="grid grid-cols-5 gap-1.5 md:gap-4 mb-8">
           {tiles.map((row, rowIndex) =>
             row.map((tile, colIndex) => {
               const isEditing = editingTile?.row === rowIndex && editingTile?.col === colIndex
@@ -402,7 +404,7 @@ function Bingo() {
                   key={`${rowIndex}-${colIndex}`}
                   onClick={() => handleTileClick(rowIndex, colIndex)}
                   onDoubleClick={() => handleTileDoubleClick(rowIndex, colIndex)}
-                  className={`bingo-tile relative aspect-square bg-gray-800 border-2 rounded-lg p-1 md:p-2 flex flex-col items-center justify-center transition-all overflow-hidden cursor-pointer ${
+                  className={`bingo-tile relative aspect-square bg-gray-800 border-2 rounded-lg p-0.5 md:p-2 flex flex-col items-center justify-center transition-all overflow-hidden cursor-pointer ${
                     isEditing 
                       ? 'border-blue-500 border-4' 
                       : tile.completed

@@ -1,5 +1,56 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+
+// Component to handle contentEditable with proper cursor management
+function TileContent({ content, completed, onChange, onDoubleClick }) {
+  const divRef = useRef(null)
+  const isFocusedRef = useRef(false)
+
+  useEffect(() => {
+    if (divRef.current && !isFocusedRef.current) {
+      divRef.current.textContent = content
+    }
+  }, [content])
+
+  return (
+    <div
+      ref={divRef}
+      contentEditable={!completed}
+      suppressContentEditableWarning={true}
+      onBlur={(e) => {
+        isFocusedRef.current = false
+        if (!completed) {
+          onChange(e.target.textContent || '')
+        }
+      }}
+      onFocus={() => {
+        isFocusedRef.current = true
+      }}
+      onDoubleClick={onDoubleClick}
+      className={`relative z-10 w-full h-full bg-transparent text-white text-center text-xs md:text-sm font-semibold border-none outline-none ${
+        completed 
+          ? 'line-through opacity-50 cursor-default' 
+          : 'cursor-text'
+      }`}
+      style={{
+        overflow: 'auto',
+        wordWrap: 'break-word',
+        overflowWrap: 'break-word',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '4px',
+        width: '100%',
+        height: '100%',
+        whiteSpace: 'normal',
+        hyphens: 'auto',
+        maxHeight: '100%',
+        maxWidth: '100%'
+      }}
+      data-placeholder={content ? '' : '...'}
+    />
+  )
+}
 
 function Bingo() {
   // Initialize 5x5 grid with empty tiles
@@ -37,17 +88,20 @@ function Bingo() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center py-8 px-4">
+    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center py-8 px-4 relative">
+      {/* Back to Home button - top left */}
+      <Link
+        to="/"
+        className="absolute top-4 left-4 z-20 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-lg"
+        aria-label="Back to Home"
+      >
+        ←
+      </Link>
+
       <div className="w-full max-w-4xl">
         {/* Header */}
         <div className="text-center text-white mb-8">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">2026 Bingo Card</h1>
-          <Link
-            to="/"
-            className="inline-block bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors text-sm"
-          >
-            ← Back to Home
-          </Link>
         </div>
 
         {/* Bingo Grid */}
@@ -66,58 +120,16 @@ function Bingo() {
                 )}
 
                 {/* Editable Content */}
-                <div
-                  contentEditable={!tile.completed}
-                  suppressContentEditableWarning={true}
-                  onInput={(e) => {
-                    if (!tile.completed) {
-                      handleContentChange(rowIndex, colIndex, e.target.textContent || '')
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!tile.completed) {
-                      handleContentChange(rowIndex, colIndex, e.target.textContent || '')
-                    }
-                  }}
-                  onClick={(e) => {
-                    if (!tile.completed) {
-                      e.target.focus()
-                    }
-                  }}
-                  onFocus={(e) => {
-                    if (tile.completed) {
-                      e.target.blur()
-                    }
-                  }}
+                <TileContent
+                  content={tile.content}
+                  completed={tile.completed}
+                  onChange={(newContent) => handleContentChange(rowIndex, colIndex, newContent)}
                   onDoubleClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     handleTileClick(rowIndex, colIndex)
                   }}
-                  className={`relative z-10 w-full h-full bg-transparent text-white text-center text-xs md:text-sm font-semibold border-none outline-none ${
-                    tile.completed 
-                      ? 'line-through opacity-50 cursor-default' 
-                      : 'cursor-text'
-                  }`}
-                  style={{
-                    overflow: 'auto',
-                    wordWrap: 'break-word',
-                    overflowWrap: 'break-word',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '4px',
-                    width: '100%',
-                    height: '100%',
-                    whiteSpace: 'normal',
-                    hyphens: 'auto',
-                    maxHeight: '100%',
-                    maxWidth: '100%'
-                  }}
-                  data-placeholder={tile.content ? '' : '...'}
-                >
-                  {tile.content}
-                </div>
+                />
               </div>
             ))
           )}

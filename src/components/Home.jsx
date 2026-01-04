@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
+import UserIndicator from './UserIndicator'
 
 function Home() {
   return (
-    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-center px-4 relative">
+      <UserIndicator />
       <div className="text-center text-white">
         <h1 className="text-4xl md:text-6xl font-bold mb-6">SY x DP</h1>
         <p className="text-xl md:text-2xl text-gray-300 mb-8">🖤 🤍</p>

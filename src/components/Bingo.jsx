@@ -5,6 +5,7 @@ import {
   loadBingoCard, 
   recordStatusChange 
 } from '../services/bingoStorage'
+import UserIndicator from './UserIndicator'
 
 // Modal component for editing tile content
 function EditTileModal({ isOpen, tile, onSave, onCancel }) {
@@ -180,13 +181,19 @@ function Bingo() {
   // Card ID - using a fixed ID for now (could be user-specific later)
   const CARD_ID = 'sydplove-2026-bingo'
   
+  // Get current username
+  const getCurrentUsername = () => {
+    return sessionStorage.getItem('sydplove_username') || 'unknown'
+  }
+  
   // Initialize 5x5 grid with empty tiles
   const [tiles, setTiles] = useState(() => {
     return Array(5).fill(null).map(() => 
       Array(5).fill(null).map(() => ({
         content: '',
         completed: false,
-        completedAt: null
+        completedAt: null,
+        updatedBy: null
       }))
     )
   })
@@ -208,7 +215,8 @@ function Bingo() {
     const handleBeforeUnload = () => {
       // Only save if we've finished loading and there might be unsaved changes in modal
       if (!isInitialLoadRef.current && modalTile) {
-        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt).catch(err => 
+        const username = getCurrentUsername()
+        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt, username).catch(err => 
           console.error(`Failed to save tile on unload:`, err)
         )
       }
@@ -265,7 +273,8 @@ function Bingo() {
     setSaving(true)
     setSaveError(null)
     try {
-      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt)
+      const username = getCurrentUsername()
+      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt, username)
       if (!result.success) {
         setSaveError('Failed to save - check console for details')
         console.error('Save failed:', result)
@@ -331,7 +340,8 @@ function Bingo() {
     })
     
     if (oldCompleted !== newCompleted) {
-      recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted).catch(err => 
+      const username = getCurrentUsername()
+      recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted, username).catch(err => 
         console.error('Failed to record status change:', err)
       )
     }
@@ -357,6 +367,7 @@ function Bingo() {
 
   return (
     <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center py-8 px-4 relative">
+      <UserIndicator />
       {/* Back to Home button - top left */}
       <Link
         to="/"
@@ -369,19 +380,20 @@ function Bingo() {
         ←
       </Link>
 
-      {/* Saving indicator */}
-      {saving && (
-        <div className="absolute top-4 right-4 z-20 bg-gray-800 text-white text-xs px-3 py-1 rounded-lg">
-          Saving...
-        </div>
-      )}
-      
-      {/* Save error indicator */}
-      {saveError && (
-        <div className="absolute top-4 right-4 z-20 bg-red-600 text-white text-xs px-3 py-1 rounded-lg max-w-xs">
-          ⚠️ {saveError}
-        </div>
-      )}
+      {/* User indicator and status messages */}
+      <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
+        <UserIndicator />
+        {saving && (
+          <div className="bg-gray-800 text-white text-xs px-3 py-1 rounded-lg">
+            Saving...
+          </div>
+        )}
+        {saveError && (
+          <div className="bg-red-600 text-white text-xs px-3 py-1 rounded-lg max-w-xs">
+            ⚠️ {saveError}
+          </div>
+        )}
+      </div>
 
       <div className="w-full max-w-4xl px-2 md:px-0">
         {/* Header */}

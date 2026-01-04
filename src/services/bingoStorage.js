@@ -43,6 +43,13 @@ const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || `bingo-cards-$
 const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || `bingo-changes-${ENV}`
 
 /**
+ * Get current username from sessionStorage
+ */
+function getCurrentUsername() {
+  return sessionStorage.getItem('sydplove_username') || 'unknown'
+}
+
+/**
  * Generate tile ID for a specific tile
  */
 function getTileId(cardId, row, col) {
@@ -52,8 +59,9 @@ function getTileId(cardId, row, col) {
 /**
  * Save a single bingo tile independently
  */
-export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null) {
+export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null) {
   const tileId = getTileId(cardId, row, col)
+  const updatedBy = username || getCurrentUsername()
 
   if (!isAWSConfigured() || !docClient) {
     console.warn('AWS not configured - saving to localStorage as fallback')
@@ -67,6 +75,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         content,
         completed,
         updatedAt: new Date().toISOString(),
+        updatedBy,
       }))
       return { success: true, fallback: true }
     } catch (error) {
@@ -86,6 +95,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
       completed: completed || false,
       updatedAt: now,
       completedAt: completedAt || (completed ? now : null),
+      updatedBy,
     }
     
     await docClient.send(
@@ -117,6 +127,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         content,
         completed,
         updatedAt: new Date().toISOString(),
+        updatedBy,
       }))
       console.warn('Fell back to localStorage - tile saved locally but NOT synced to DynamoDB')
       return { success: true, fallback: true }
@@ -203,14 +214,15 @@ export async function loadBingoCard(cardId) {
           const key = `bingo-tile-${tileId}`
           const stored = localStorage.getItem(key)
           if (stored) {
-          const data = JSON.parse(stored)
-          tiles[row][col] = {
-            content: data.content || '',
-            completed: data.completed || false,
-            completedAt: data.completedAt || null
-          }
+            const data = JSON.parse(stored)
+            tiles[row][col] = {
+              content: data.content || '',
+              completed: data.completed || false,
+              completedAt: data.completedAt || null,
+              updatedBy: data.updatedBy || null
+            }
           } else {
-            tiles[row][col] = { content: '', completed: false, completedAt: null }
+            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null }
           }
         }
       }
@@ -261,7 +273,8 @@ export async function loadBingoCard(cardId) {
       Array(5).fill(null).map(() => ({
         content: '',
         completed: false,
-        completedAt: null
+        completedAt: null,
+        updatedBy: null
       }))
     )
 
@@ -275,7 +288,8 @@ export async function loadBingoCard(cardId) {
           tiles[row][col] = {
             content: item.content || '',
             completed: item.completed === true || item.completed === 'true',
-            completedAt: item.completedAt || null
+            completedAt: item.completedAt || null,
+            updatedBy: item.updatedBy || null
           }
         }
       })
@@ -312,10 +326,11 @@ export async function loadBingoCard(cardId) {
             tiles[row][col] = {
               content: data.content || '',
               completed: data.completed || false,
-              completedAt: data.completedAt || null
+              completedAt: data.completedAt || null,
+              updatedBy: data.updatedBy || null
             }
           } else {
-            tiles[row][col] = { content: '', completed: false, completedAt: null }
+            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null }
           }
         }
       }
@@ -335,7 +350,7 @@ export async function loadBingoCard(cardId) {
 /**
  * Record a content change
  */
-export async function recordContentChange(cardId, row, col, oldContent, newContent) {
+export async function recordContentChange(cardId, row, col, oldContent, newContent, username = null) {
   if (!isAWSConfigured()) {
     // Silently skip if AWS not configured
     return { success: true }
@@ -344,6 +359,7 @@ export async function recordContentChange(cardId, row, col, oldContent, newConte
   try {
     const timestamp = new Date().toISOString()
     const changeId = `${cardId}-${timestamp}-${row}-${col}`
+    const userId = username || getCurrentUsername()
 
     await docClient.send(
       new PutCommand({
@@ -357,6 +373,7 @@ export async function recordContentChange(cardId, row, col, oldContent, newConte
           oldValue: oldContent,
           newValue: newContent,
           timestamp,
+          userId,
         },
       })
     )
@@ -371,7 +388,7 @@ export async function recordContentChange(cardId, row, col, oldContent, newConte
 /**
  * Record a status change
  */
-export async function recordStatusChange(cardId, row, col, oldStatus, newStatus) {
+export async function recordStatusChange(cardId, row, col, oldStatus, newStatus, username = null) {
   if (!isAWSConfigured()) {
     // Silently skip if AWS not configured
     return { success: true }
@@ -380,6 +397,7 @@ export async function recordStatusChange(cardId, row, col, oldStatus, newStatus)
   try {
     const timestamp = new Date().toISOString()
     const changeId = `${cardId}-${timestamp}-${row}-${col}`
+    const userId = username || getCurrentUsername()
 
     await docClient.send(
       new PutCommand({
@@ -393,6 +411,7 @@ export async function recordStatusChange(cardId, row, col, oldStatus, newStatus)
           oldValue: oldStatus.toString(),
           newValue: newStatus.toString(),
           timestamp,
+          userId,
         },
       })
     )

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import ChristmasTree from './ChristmasTree'
 import Fireworks from './Fireworks'
 import Snow from './Snow'
+import UserIndicator from './UserIndicator'
 
 function Holidays() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -25,8 +26,13 @@ function Holidays() {
       {/* Fireworks background */}
       <Fireworks key={fireworkKey} smokeEnabled={smokeEnabled} skipInitialDelay={fireworkKey > 0} />
 
-      {/* Top right collapsible menu */}
+      {/* Top right - User indicator */}
       <div className="absolute top-4 right-4 z-20">
+        <UserIndicator />
+      </div>
+
+      {/* Top right collapsible menu - positioned below user indicator */}
+      <div className="absolute top-20 right-4 z-20">
         {/* Menu toggle button */}
         <button
           onClick={() => setMenuOpen(!menuOpen)}

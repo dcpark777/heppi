@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
 
 // Check if AWS is configured
 const isAWSConfigured = () => {
@@ -128,66 +128,6 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         updatedBy,
       }))
       console.warn('Fell back to localStorage - tile saved locally but NOT synced to DynamoDB')
-      return { success: true, fallback: true }
-    } catch (localError) {
-      console.error('Failed to save even to localStorage:', localError)
-      return { success: false, error: error.message }
-    }
-  }
-}
-
-/**
- * Save bingo card state (content and status) - DEPRECATED, use saveBingoTile instead
- * Kept for backward compatibility
- */
-export async function saveBingoCard(cardId, tiles) {
-  if (!isAWSConfigured() || !docClient) {
-    console.warn('AWS not configured - saving to localStorage as fallback')
-    try {
-      localStorage.setItem(`bingo-card-${cardId}`, JSON.stringify({
-        tiles,
-        updatedAt: new Date().toISOString(),
-      }))
-      return { success: true, fallback: true }
-    } catch (error) {
-      console.error('Failed to save to localStorage:', error)
-      return { success: false, error: error.message }
-    }
-  }
-
-  try {
-    const item = {
-      cardId,
-      tiles: JSON.stringify(tiles),
-      updatedAt: new Date().toISOString(),
-    }
-    
-    await docClient.send(
-      new PutCommand({
-        TableName: BINGO_CARD_TABLE,
-        Item: item,
-      })
-    )
-
-    return { success: true }
-  } catch (error) {
-    console.error('Error saving bingo card to DynamoDB:', error)
-    
-    if (error.message?.includes('CORS') || error.message?.includes('Network') || error.name === 'NetworkError' || error.code === 'NetworkingError') {
-      console.error('CORS or Network Error - DynamoDB cannot be accessed directly from browser')
-    }
-    
-    if (error.name === 'AccessDeniedException' || error.code === 'AccessDeniedException') {
-      console.error('Access Denied - Check IAM permissions')
-    }
-    
-    // Fallback to localStorage on error
-    try {
-      localStorage.setItem(`bingo-card-${cardId}`, JSON.stringify({
-        tiles,
-        updatedAt: new Date().toISOString(),
-      }))
-      console.warn('Fell back to localStorage - changes saved locally but NOT synced to DynamoDB')
       return { success: true, fallback: true }
     } catch (localError) {
       console.error('Failed to save even to localStorage:', localError)

@@ -306,6 +306,7 @@ export async function loadBingoCard(cardId) {
     // Try to use GSI first (more efficient), fall back to Scan if GSI doesn't exist
     let result
     try {
+      console.log('Attempting GSI query on cardId-index...')
       result = await docClient.send(
         new QueryCommand({
           TableName: BINGO_CARD_TABLE,
@@ -316,22 +317,35 @@ export async function loadBingoCard(cardId) {
           },
         })
       )
-      console.log('✅ Used GSI query to load tiles')
+      console.log('✅ GSI query successful, found', result.Items?.length || 0, 'items')
     } catch (gsiError) {
-      // GSI might not exist, fall back to Scan
-      console.warn('GSI not available, using Scan:', gsiError.message)
-      result = await docClient.send(
-        new ScanCommand({
-          TableName: BINGO_CARD_TABLE,
-          FilterExpression: 'cardId = :cardId',
-          ExpressionAttributeValues: {
-            ':cardId': cardId,
-          },
-        })
-      )
+      // GSI might not exist or query failed, fall back to Scan
+      console.warn('⚠️ GSI query failed, falling back to Scan:', {
+        error: gsiError.name,
+        message: gsiError.message,
+        code: gsiError.code
+      })
+      try {
+        result = await docClient.send(
+          new ScanCommand({
+            TableName: BINGO_CARD_TABLE,
+            FilterExpression: 'cardId = :cardId',
+            ExpressionAttributeValues: {
+              ':cardId': cardId,
+            },
+          })
+        )
+        console.log('✅ Scan successful, found', result.Items?.length || 0, 'items')
+      } catch (scanError) {
+        console.error('❌ Both GSI query and Scan failed:', scanError)
+        throw scanError
+      }
     }
 
-    console.log('DynamoDB scan result:', { itemCount: result.Items?.length || 0 })
+    console.log('DynamoDB query/scan result:', { 
+      itemCount: result.Items?.length || 0,
+      sampleItem: result.Items?.[0] 
+    })
 
     // Initialize 5x5 grid with empty tiles
     const tiles = Array(5).fill(null).map(() => 
@@ -344,16 +358,32 @@ export async function loadBingoCard(cardId) {
     // Populate tiles from DynamoDB results
     if (result.Items && result.Items.length > 0) {
       result.Items.forEach(item => {
-        const row = item.row
-        const col = item.col
-        if (row >= 0 && row < 5 && col >= 0 && col < 5) {
+        // Ensure row and col are numbers (Document Client should convert, but be safe)
+        const row = typeof item.row === 'number' ? item.row : parseInt(item.row, 10)
+        const col = typeof item.col === 'number' ? item.col : parseInt(item.col, 10)
+        
+        console.log('Processing tile:', { 
+          tileId: item.tileId, 
+          row, 
+          col, 
+          content: item.content, 
+          completed: item.completed,
+          rowType: typeof row,
+          colType: typeof col
+        })
+        
+        if (!isNaN(row) && !isNaN(col) && row >= 0 && row < 5 && col >= 0 && col < 5) {
           tiles[row][col] = {
             content: item.content || '',
-            completed: item.completed || false
+            completed: item.completed === true || item.completed === 'true'
           }
+          console.log(`✅ Set tile [${row}][${col}] =`, tiles[row][col])
+        } else {
+          console.warn('⚠️ Invalid tile coordinates:', { row, col, tileId: item.tileId })
         }
       })
       console.log('✅ Loaded', result.Items.length, 'tiles from DynamoDB')
+      console.log('Final tiles array:', tiles)
     } else {
       console.log('No tiles found in DynamoDB for cardId:', cardId)
     }

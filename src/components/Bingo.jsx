@@ -7,7 +7,7 @@ import {
 } from '../services/bingoStorage'
 
 // Component to handle contentEditable with proper cursor management
-function TileContent({ content, completed, onChange, onDoubleClick }) {
+function TileContent({ content, completed, isEditing, onChange, onDoubleClick }) {
   const divRef = useRef(null)
   const isFocusedRef = useRef(false)
   const lastContentRef = useRef(content)
@@ -21,7 +21,7 @@ function TileContent({ content, completed, onChange, onDoubleClick }) {
   }, [content])
 
   const handleInput = (e) => {
-    if (!completed) {
+    if (isEditing && !completed) {
       const newContent = e.target.textContent || ''
       // Update immediately on input
       onChange(newContent)
@@ -31,20 +31,12 @@ function TileContent({ content, completed, onChange, onDoubleClick }) {
 
   const handleBlur = (e) => {
     isFocusedRef.current = false
-    if (!completed) {
-      const finalContent = e.target.textContent || ''
-      // Ensure we save the final content
-      if (finalContent !== lastContentRef.current) {
-        onChange(finalContent)
-        lastContentRef.current = finalContent
-      }
-    }
   }
 
   return (
     <div
       ref={divRef}
-      contentEditable={!completed}
+      contentEditable={isEditing && !completed}
       suppressContentEditableWarning={true}
       onInput={handleInput}
       onBlur={handleBlur}
@@ -55,7 +47,9 @@ function TileContent({ content, completed, onChange, onDoubleClick }) {
       className={`relative z-10 w-full h-full bg-transparent text-white text-center text-xs md:text-sm font-semibold border-none outline-none ${
         completed 
           ? 'line-through opacity-50 cursor-default' 
-          : 'cursor-text'
+          : isEditing
+          ? 'cursor-text'
+          : 'cursor-default'
       }`}
       style={{
         overflow: 'auto',
@@ -93,7 +87,9 @@ function Bingo() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
-  const saveTimeoutRefs = useRef({}) // Track save timeouts per tile
+  const [editingTile, setEditingTile] = useState(null) // Track which tile is being edited: {row, col}
+  const [editContent, setEditContent] = useState('') // Temporary content while editing
+  const [showEditButton, setShowEditButton] = useState(null) // Track which tile shows edit button: {row, col}
   const isInitialLoadRef = useRef(true) // Track if we're still loading initial data
 
   // Load bingo card on mount
@@ -101,25 +97,33 @@ function Bingo() {
     loadCard()
   }, [])
 
+  // Hide edit button when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      // If clicking outside a tile, hide the edit button
+      if (showEditButton && !e.target.closest('.bingo-tile')) {
+        setShowEditButton(null)
+      }
+    }
+
+    if (showEditButton) {
+      document.addEventListener('click', handleClickOutside)
+      return () => {
+        document.removeEventListener('click', handleClickOutside)
+      }
+    }
+  }, [showEditButton])
+
   // Save on page unload to ensure nothing is lost (only if user made changes)
   useEffect(() => {
     const handleBeforeUnload = () => {
       // Only save if we've finished loading and there might be unsaved changes
-      if (!isInitialLoadRef.current) {
-        // Save all pending tiles immediately
-        tiles.forEach((row, rowIndex) => {
-          row.forEach((tile, colIndex) => {
-            const key = `${rowIndex}-${colIndex}`
-            if (saveTimeoutRefs.current[key]) {
-              clearTimeout(saveTimeoutRefs.current[key])
-              delete saveTimeoutRefs.current[key]
-            }
-            // Save immediately
-            saveBingoTile(CARD_ID, rowIndex, colIndex, tile.content, tile.completed).catch(err => 
-              console.error(`Failed to save tile ${rowIndex}-${colIndex} on unload:`, err)
-            )
-          })
-        })
+      if (!isInitialLoadRef.current && editingTile) {
+        // Save the tile that's currently being edited
+        const tile = tiles[editingTile.row][editingTile.col]
+        saveBingoTile(CARD_ID, editingTile.row, editingTile.col, editContent || tile.content, tile.completed).catch(err => 
+          console.error(`Failed to save tile ${editingTile.row}-${editingTile.col} on unload:`, err)
+        )
       }
     }
 
@@ -127,7 +131,7 @@ function Bingo() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [tiles])
+  }, [tiles, editingTile, editContent])
 
   const loadCard = async () => {
     setLoading(true)
@@ -166,7 +170,7 @@ function Bingo() {
     }
   }
 
-  // Save a single tile (debounced) - only saves if not initial load
+  // Save a single tile - only saves when Save button is clicked
   const saveTile = useCallback(async (row, col, content, completed) => {
     // Don't save during initial load
     if (isInitialLoadRef.current) {
@@ -174,62 +178,96 @@ function Bingo() {
       return
     }
 
-    const key = `${row}-${col}`
-    
-    // Clear existing timeout for this tile
-    if (saveTimeoutRefs.current[key]) {
-      clearTimeout(saveTimeoutRefs.current[key])
-    }
-
-    // Set new timeout to debounce saves
-    saveTimeoutRefs.current[key] = setTimeout(async () => {
-      setSaving(true)
-      setSaveError(null)
-      try {
-        const result = await saveBingoTile(CARD_ID, row, col, content, completed)
-        if (!result.success) {
-          setSaveError('Failed to save - check console for details')
-          console.error('Save failed:', result)
-        } else if (result.fallback) {
-          setSaveError('Saved locally only - not synced to cloud')
-        } else {
-          console.log(`✅ Tile ${row}-${col} saved successfully`)
-        }
-      } catch (error) {
-        console.error(`Failed to save tile ${row}-${col}:`, error)
-        setSaveError('Save failed - check console')
-      } finally {
-        setSaving(false)
-        delete saveTimeoutRefs.current[key]
-        // Clear error after 5 seconds
-        if (saveError) {
-          setTimeout(() => setSaveError(null), 5000)
-        }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const result = await saveBingoTile(CARD_ID, row, col, content, completed)
+      if (!result.success) {
+        setSaveError('Failed to save - check console for details')
+        console.error('Save failed:', result)
+      } else if (result.fallback) {
+        setSaveError('Saved locally only - not synced to cloud')
+      } else {
+        console.log(`✅ Tile ${row}-${col} saved successfully`)
+        // Update the tile in state with saved content
+        setTiles(prev => {
+          const newTiles = [...prev]
+          newTiles[row] = [...newTiles[row]]
+          newTiles[row][col] = {
+            ...newTiles[row][col],
+            content: content
+          }
+          return newTiles
+        })
+        // Exit edit mode
+        setEditingTile(null)
+        setEditContent('')
       }
-    }, 1000) // Save 1 second after last change
+    } catch (error) {
+      console.error(`Failed to save tile ${row}-${col}:`, error)
+      setSaveError('Save failed - check console')
+    } finally {
+      setSaving(false)
+      // Clear error after 5 seconds
+      setTimeout(() => setSaveError(null), 5000)
+    }
   }, [])
 
-  const handleContentChange = (row, col, value) => {
-    console.log('📝 Content changed:', { row, col, value })
-    setTiles(prev => {
-      const newTiles = [...prev]
-      newTiles[row] = [...newTiles[row]]
-      const updatedTile = {
-        ...newTiles[row][col],
-        content: value
-      }
-      newTiles[row][col] = updatedTile
-      
-      console.log('📝 New tile state:', updatedTile)
-      
-      // Save individual tile
-      saveTile(row, col, updatedTile.content, updatedTile.completed)
-      
-      return newTiles
-    })
+  const handleTileClick = (row, col) => {
+    // If tile is completed, don't show edit button
+    if (tiles[row][col].completed) {
+      return
+    }
+    
+    // If already editing this tile, do nothing
+    if (editingTile?.row === row && editingTile?.col === col) {
+      return
+    }
+    
+    // If edit button is already shown for this tile, enter edit mode
+    if (showEditButton?.row === row && showEditButton?.col === col) {
+      setEditingTile({ row, col })
+      setEditContent(tiles[row][col].content)
+      setShowEditButton(null)
+    } else {
+      // Show edit button for this tile
+      setShowEditButton({ row, col })
+    }
   }
 
-  const handleTileClick = (row, col) => {
+  const handleEditButtonClick = (row, col, e) => {
+    e.stopPropagation()
+    if (tiles[row][col].completed) {
+      return // Don't allow editing completed tiles
+    }
+    setEditingTile({ row, col })
+    setEditContent(tiles[row][col].content)
+    setShowEditButton(null)
+  }
+
+  const handleSaveClick = (row, col, e) => {
+    e.stopPropagation()
+    const tile = tiles[row][col]
+    saveTile(row, col, editContent, tile.completed)
+  }
+
+  const handleCancelEdit = (e) => {
+    if (e) e.stopPropagation()
+    setEditingTile(null)
+    setEditContent('')
+  }
+
+  const handleContentChange = (row, col, value) => {
+    // Only update the edit content, don't save yet
+    setEditContent(value)
+  }
+
+  const handleTileDoubleClick = (row, col) => {
+    // Don't toggle if we're editing this tile
+    if (editingTile && editingTile.row === row && editingTile.col === col) {
+      return
+    }
+    
     setTiles(prev => {
       const newTiles = [...prev]
       const oldStatus = newTiles[row][col].completed
@@ -242,6 +280,11 @@ function Bingo() {
       }
       newTiles[row][col] = updatedTile
       
+      // Hide edit button if it was showing
+      if (showEditButton?.row === row && showEditButton?.col === col) {
+        setShowEditButton(null)
+      }
+      
       // Record status change
       if (oldStatus !== newStatus) {
         recordStatusChange(CARD_ID, row, col, oldStatus, newStatus).catch(err => 
@@ -249,7 +292,7 @@ function Bingo() {
         )
       }
       
-      // Save individual tile
+      // Save individual tile immediately when toggling completion
       saveTile(row, col, updatedTile.content, updatedTile.completed)
       
       return newTiles
@@ -299,38 +342,88 @@ function Bingo() {
         {/* Bingo Grid */}
         <div className="grid grid-cols-5 gap-2 md:gap-4 mb-8">
           {tiles.map((row, rowIndex) =>
-            row.map((tile, colIndex) => (
-              <div
-                key={`${rowIndex}-${colIndex}`}
-                className="relative aspect-square bg-gray-800 border-2 border-gray-700 rounded-lg p-1 md:p-2 flex flex-col items-center justify-center transition-all hover:border-gray-500 overflow-hidden"
-              >
-                {/* Completion Overlay */}
-                {tile.completed && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-                    <div className="text-4xl md:text-6xl text-green-500 font-bold opacity-80">✓</div>
-                  </div>
-                )}
+            row.map((tile, colIndex) => {
+              const isEditing = editingTile?.row === rowIndex && editingTile?.col === colIndex
+              const showEditBtn = showEditButton?.row === rowIndex && showEditButton?.col === colIndex
+              const displayContent = isEditing ? editContent : tile.content
+              
+              return (
+                <div
+                  key={`${rowIndex}-${colIndex}`}
+                  onClick={() => handleTileClick(rowIndex, colIndex)}
+                  onDoubleClick={() => handleTileDoubleClick(rowIndex, colIndex)}
+                  className={`bingo-tile relative aspect-square bg-gray-800 border-2 rounded-lg p-1 md:p-2 flex flex-col items-center justify-center transition-all overflow-hidden cursor-pointer ${
+                    isEditing 
+                      ? 'border-blue-500 border-4' 
+                      : tile.completed
+                      ? 'border-green-600'
+                      : 'border-gray-700 hover:border-gray-500'
+                  }`}
+                >
+                  {/* Completion Overlay */}
+                  {tile.completed && !isEditing && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                      <div className="text-4xl md:text-6xl text-green-500 font-bold opacity-80">✓</div>
+                    </div>
+                  )}
 
-                {/* Editable Content */}
-                <TileContent
-                  content={tile.content}
-                  completed={tile.completed}
-                  onChange={(newContent) => handleContentChange(rowIndex, colIndex, newContent)}
-                  onDoubleClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleTileClick(rowIndex, colIndex)
-                  }}
-                />
-              </div>
-            ))
+                  {/* Tile Content */}
+                  <TileContent
+                    content={displayContent}
+                    completed={tile.completed}
+                    isEditing={isEditing}
+                    onChange={(newContent) => handleContentChange(rowIndex, colIndex, newContent)}
+                    onDoubleClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleTileDoubleClick(rowIndex, colIndex)
+                    }}
+                  />
+
+                  {/* Edit Button (shown on click) */}
+                  {!tile.completed && !isEditing && showEditBtn && (
+                    <div className="absolute bottom-1 right-1 z-20">
+                      <button
+                        onClick={(e) => handleEditButtonClick(rowIndex, colIndex, e)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded transition-colors"
+                        title="Edit tile"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Save/Cancel Buttons (shown when editing) */}
+                  {!tile.completed && isEditing && (
+                    <div className="absolute bottom-1 right-1 flex gap-1 z-20">
+                      <button
+                        onClick={(e) => handleSaveClick(rowIndex, colIndex, e)}
+                        disabled={saving}
+                        className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-xs px-2 py-1 rounded transition-colors"
+                        title="Save changes"
+                      >
+                        💾
+                      </button>
+                      <button
+                        onClick={(e) => handleCancelEdit(e)}
+                        className="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded transition-colors"
+                        title="Cancel editing"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
 
         {/* Instructions */}
         <div className="text-center text-gray-400 text-sm md:text-base">
-          <p className="mb-2">✏️ Single click on a tile to edit its content</p>
-          <p className="mb-2">💡 Double click on a tile to toggle completion status</p>
+          <p className="mb-2">👆 Click/tap a tile to show the edit button (✏️)</p>
+          <p className="mb-2">✏️ Click the edit button to edit content, then save (💾)</p>
+          <p className="mb-2">💡 Double click/tap a tile to toggle completion status</p>
           <p>🔒 Completed tiles cannot be edited - mark them incomplete first</p>
         </div>
       </div>

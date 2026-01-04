@@ -51,16 +51,17 @@ function getCurrentUsername() {
 
 /**
  * Generate tile ID for a specific tile
+ * Format: {row}-{col} (e.g., "0-0", "2-3")
  */
-function getTileId(cardId, row, col) {
-  return `${cardId}-${row}-${col}`
+function getTileId(row, col) {
+  return `${row}-${col}`
 }
 
 /**
  * Save a single bingo tile independently
  */
 export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null) {
-  const tileId = getTileId(cardId, row, col)
+  const tileId = getTileId(row, col)
   const updatedBy = username || getCurrentUsername()
 
   if (!isAWSConfigured() || !docClient) {
@@ -69,7 +70,6 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
       // Save individual tile to localStorage
       const key = `bingo-tile-${tileId}`
       localStorage.setItem(key, JSON.stringify({
-        cardId,
         row,
         col,
         content,
@@ -88,7 +88,6 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
     const now = new Date().toISOString()
     const item = {
       tileId,
-      cardId,
       row,
       col,
       content: content || '',
@@ -121,7 +120,6 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
     try {
       const key = `bingo-tile-${tileId}`
       localStorage.setItem(key, JSON.stringify({
-        cardId,
         row,
         col,
         content,
@@ -210,7 +208,7 @@ export async function loadBingoCard(cardId) {
       for (let row = 0; row < 5; row++) {
         tiles[row] = []
         for (let col = 0; col < 5; col++) {
-          const tileId = getTileId(cardId, row, col)
+          const tileId = getTileId(row, col)
           const key = `bingo-tile-${tileId}`
           const stored = localStorage.getItem(key)
           if (stored) {
@@ -237,36 +235,13 @@ export async function loadBingoCard(cardId) {
   }
 
   try {
-    // Try to use GSI first (more efficient), fall back to Scan if GSI doesn't exist
-    let result
-    try {
-      result = await docClient.send(
-        new QueryCommand({
-          TableName: BINGO_CARD_TABLE,
-          IndexName: 'cardId-index',
-          KeyConditionExpression: 'cardId = :cardId',
-          ExpressionAttributeValues: {
-            ':cardId': cardId,
-          },
-        })
-      )
-    } catch (gsiError) {
-      // GSI might not exist or query failed, fall back to Scan
-      try {
-        result = await docClient.send(
-          new ScanCommand({
-            TableName: BINGO_CARD_TABLE,
-            FilterExpression: 'cardId = :cardId',
-            ExpressionAttributeValues: {
-              ':cardId': cardId,
-            },
-          })
-        )
-      } catch (scanError) {
-        console.error('Both GSI query and Scan failed:', scanError)
-        throw scanError
-      }
-    }
+    // Scan all tiles (there's only one card, so we can scan the entire table)
+    // With only 25 tiles, this is efficient
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: BINGO_CARD_TABLE,
+      })
+    )
 
     // Initialize 5x5 grid with empty tiles
     const tiles = Array(5).fill(null).map(() => 
@@ -318,7 +293,7 @@ export async function loadBingoCard(cardId) {
       for (let row = 0; row < 5; row++) {
         tiles[row] = []
         for (let col = 0; col < 5; col++) {
-          const tileId = getTileId(cardId, row, col)
+          const tileId = getTileId(row, col)
           const key = `bingo-tile-${tileId}`
           const stored = localStorage.getItem(key)
           if (stored) {
@@ -358,7 +333,7 @@ export async function recordContentChange(cardId, row, col, oldContent, newConte
 
   try {
     const timestamp = new Date().toISOString()
-    const changeId = `${cardId}-${timestamp}-${row}-${col}`
+    const changeId = `${timestamp}-${row}-${col}`
     const userId = username || getCurrentUsername()
 
     await docClient.send(
@@ -366,7 +341,6 @@ export async function recordContentChange(cardId, row, col, oldContent, newConte
         TableName: BINGO_CHANGES_TABLE,
         Item: {
           changeId,
-          cardId,
           type: 'content',
           row,
           col,
@@ -396,7 +370,7 @@ export async function recordStatusChange(cardId, row, col, oldStatus, newStatus,
 
   try {
     const timestamp = new Date().toISOString()
-    const changeId = `${cardId}-${timestamp}-${row}-${col}`
+    const changeId = `${timestamp}-${row}-${col}`
     const userId = username || getCurrentUsername()
 
     await docClient.send(
@@ -404,7 +378,6 @@ export async function recordStatusChange(cardId, row, col, oldStatus, newStatus,
         TableName: BINGO_CHANGES_TABLE,
         Item: {
           changeId,
-          cardId,
           type: 'status',
           row,
           col,
@@ -424,35 +397,35 @@ export async function recordStatusChange(cardId, row, col, oldStatus, newStatus,
 }
 
 /**
- * Get change history for a card
- * Note: This requires a GSI on cardId-timestamp. 
- * If GSI doesn't exist, returns empty array.
+ * Get change history
+ * Scans all changes and sorts by timestamp (most recent first)
  */
 export async function getChangeHistory(cardId, limit = 100) {
   try {
-    // Try with GSI first
+    // Scan all changes (there's only one card)
     const result = await docClient.send(
-      new QueryCommand({
+      new ScanCommand({
         TableName: BINGO_CHANGES_TABLE,
-        IndexName: 'cardId-timestamp-index',
-        KeyConditionExpression: 'cardId = :cardId',
-        ExpressionAttributeValues: {
-          ':cardId': cardId,
-        },
-        ScanIndexForward: false, // Most recent first
-        Limit: limit,
+        Limit: limit * 2, // Get more items to sort and limit client-side
       })
     )
 
+    // Sort by timestamp descending (most recent first) and limit
+    const changes = (result.Items || [])
+      .sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime()
+        const timeB = new Date(b.timestamp).getTime()
+        return timeB - timeA // Descending
+      })
+      .slice(0, limit)
+
     return {
       success: true,
-      changes: result.Items || [],
+      changes,
     }
   } catch (error) {
-    // GSI might not exist - return empty for now
-    // In production, you should create the GSI or use a different query pattern
-    console.warn('GSI not found or query failed:', error.message)
-    return { success: false, error: 'GSI not configured', changes: [] }
+    console.error('Error getting change history:', error)
+    return { success: false, error: error.message, changes: [] }
   }
 }
 

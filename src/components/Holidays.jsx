@@ -20,87 +20,85 @@ function Holidays() {
 
   return (
     <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center justify-end px-4 relative">
+      {/* Back to Home button - top left */}
+      <Link
+        to="/"
+        className="absolute top-4 left-4 z-20 bg-gray-600 active:bg-gray-700 text-white font-semibold py-3 px-3 md:py-2 md:px-2 rounded-lg transition-colors text-xl md:text-lg touch-manipulation min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
+        aria-label="Back to Home"
+        style={{
+          WebkitTapHighlightColor: 'transparent'
+        }}
+      >
+        ←
+      </Link>
+
       {/* Snow falling */}
       {snowEnabled && <Snow />}
       
       {/* Fireworks background */}
       <Fireworks key={fireworkKey} smokeEnabled={smokeEnabled} skipInitialDelay={fireworkKey > 0} />
 
-      {/* Top right - User indicator */}
-      <div className="absolute top-4 right-4 z-20">
-        <UserIndicator />
-      </div>
-
-      {/* Top right collapsible menu - positioned below user indicator */}
-      <div className="absolute top-20 right-4 z-20">
-        {/* Menu toggle button */}
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="text-gray-400 hover:text-white transition-colors p-2 rounded text-lg bg-gray-900/50 backdrop-blur-sm"
-          aria-label="Toggle menu"
-          title="Menu"
-        >
-          {menuOpen ? '✕' : '☰'}
-        </button>
-
+      {/* Top right - Menu and User indicator */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         {/* Collapsible menu */}
-        {menuOpen && (
-          <div className="absolute right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-lg overflow-hidden min-w-[200px]">
-            {/* Back to Home */}
-            <Link
-              to="/"
-              onClick={() => setMenuOpen(false)}
-              className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
-            >
-              ← Back to Home
-            </Link>
+        <div className="relative">
+          {/* Menu toggle button */}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="text-gray-400 hover:text-white transition-colors p-2 rounded text-lg bg-gray-900/50 backdrop-blur-sm touch-manipulation"
+            aria-label="Toggle menu"
+            title="Menu"
+            style={{
+              WebkitTapHighlightColor: 'transparent'
+            }}
+          >
+            {menuOpen ? '✕' : '☰'}
+          </button>
 
-            {/* Firework restart */}
-            <button
-              onClick={() => {
-                setFireworkKey(prev => prev + 1)
-                setMenuOpen(false)
-              }}
-              className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
-              aria-label="Restart firework animation"
-            >
-              🎆 Restart Fireworks
-            </button>
+          {/* Collapsible menu */}
+          {menuOpen && (
+            <div className="absolute right-0 mt-2 bg-gray-900 border border-gray-800 rounded-lg shadow-lg overflow-hidden min-w-[200px]">
+              {/* Firework restart */}
+              <button
+                onClick={() => {
+                  setFireworkKey(prev => prev + 1)
+                  setMenuOpen(false)
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
+                aria-label="Restart firework animation"
+              >
+                🎆 Restart Fireworks
+              </button>
 
-            {/* Tree restart */}
-            <button
-              onClick={() => {
-                setTreeKey(prev => prev + 1)
-                setMenuOpen(false)
-              }}
-              className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
-              aria-label="Restart tree animation"
-            >
-              🎄 Restart Tree
-            </button>
+              {/* Tree restart */}
+              <button
+                onClick={() => {
+                  setTreeKey(prev => prev + 1)
+                  setMenuOpen(false)
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
+                aria-label="Restart tree animation"
+              >
+                🎄 Restart Tree
+              </button>
 
-            {/* Snow toggle */}
-            <button
-              onClick={() => {
-                setSnowEnabled(!snowEnabled)
-                setMenuOpen(false)
-              }}
-              className={`block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors ${snowEnabled ? 'bg-gray-800/50' : ''}`}
-              aria-label={snowEnabled ? "Disable snow" : "Enable snow"}
-            >
-              ❄️ Toggle Snow
-            </button>
+              {/* Snow toggle */}
+              <button
+                onClick={() => {
+                  setSnowEnabled(!snowEnabled)
+                  setMenuOpen(false)
+                }}
+                className={`block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors ${snowEnabled ? 'bg-gray-800/50' : ''}`}
+                aria-label={snowEnabled ? "Disable snow" : "Enable snow"}
+              >
+                ❄️ Toggle Snow
+              </button>
+            </div>
+          )}
+        </div>
 
-            {/* Logout */}
-            <div className="border-t border-gray-800 my-1"></div>
-            <button
-              onClick={handleLogout}
-              className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
-        )}
+        {/* User indicator with logout */}
+        <UserIndicator onLogout={handleLogout} />
       </div>
 
       <main className="flex items-center justify-center w-full max-w-full overflow-visible relative z-10 pb-4">

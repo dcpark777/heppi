@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { 
   saveBingoTile, 
   loadBingoCard, 
-  recordStatusChange 
+  recordStatusChange,
+  recordContentChange
 } from '../services/bingoStorage'
 import UserIndicator from './UserIndicator'
 
@@ -321,6 +322,7 @@ function Bingo() {
     if (!modalTile) return
     
     const { row, col } = modalTile
+    const oldContent = tiles[row][col].content
     const oldCompleted = tiles[row][col].completed
     const oldCompletedAt = tiles[row][col].completedAt
     const username = getCurrentUsername()
@@ -330,6 +332,20 @@ function Bingo() {
     const newCompletedAt = newCompleted 
       ? (oldCompletedAt || now)
       : null
+    
+    // Track content change if content changed
+    if (oldContent !== newContent) {
+      recordContentChange(CARD_ID, row, col, oldContent, newContent, username).catch(err => 
+        console.error('Failed to record content change:', err)
+      )
+    }
+    
+    // Track status change if completion status changed
+    if (oldCompleted !== newCompleted) {
+      recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted, username).catch(err => 
+        console.error('Failed to record status change:', err)
+      )
+    }
     
     // Update tile state
     setTiles(prev => {
@@ -344,13 +360,6 @@ function Bingo() {
       }
       return newTiles
     })
-    
-    if (oldCompleted !== newCompleted) {
-      const username = getCurrentUsername()
-      recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted, username).catch(err => 
-        console.error('Failed to record status change:', err)
-      )
-    }
     
     // Save to DynamoDB - use the calculated completedAt
     saveTile(row, col, newContent, newCompleted, newCompletedAt)
@@ -387,7 +396,11 @@ function Bingo() {
 
       {/* User indicator and status messages */}
       <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
-        <UserIndicator />
+        <UserIndicator onLogout={() => {
+          sessionStorage.removeItem('sydplove_authenticated')
+          sessionStorage.removeItem('sydplove_username')
+          window.location.href = '/'
+        }} />
         {saving && (
           <div className="bg-gray-800 text-white text-xs px-3 py-1 rounded-lg">
             Saving...

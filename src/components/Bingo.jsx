@@ -12,13 +12,26 @@ function TileContent({ content, completed, isEditing, onChange, onDoubleClick })
   const isFocusedRef = useRef(false)
   const lastContentRef = useRef(content)
 
+  // Initialize content on mount
   useEffect(() => {
-    // Only update if content changed externally and we're not focused
-    if (divRef.current && !isFocusedRef.current && lastContentRef.current !== content) {
+    if (divRef.current && !divRef.current.textContent && content) {
       divRef.current.textContent = content
       lastContentRef.current = content
     }
-  }, [content])
+  }, []) // Only run on mount
+
+  useEffect(() => {
+    // Only update if content changed externally and we're not focused
+    if (divRef.current && !isFocusedRef.current) {
+      const currentText = divRef.current.textContent || ''
+      const newText = content || ''
+      if (currentText !== newText) {
+        console.log('TileContent updating:', { currentText, newText, isEditing, content })
+        divRef.current.textContent = newText
+        lastContentRef.current = newText
+      }
+    }
+  }, [content, isEditing])
 
   const handleInput = (e) => {
     if (isEditing && !completed) {
@@ -97,6 +110,18 @@ function Bingo() {
     loadCard()
   }, [])
 
+  // Debug: Log tiles whenever they change
+  useEffect(() => {
+    if (!loading) {
+      console.log('🔄 Tiles state updated:', tiles)
+      console.log('Sample tiles:', {
+        '[0][0]': tiles[0]?.[0],
+        '[0][1]': tiles[0]?.[1],
+        '[1][0]': tiles[1]?.[0],
+      })
+    }
+  }, [tiles, loading])
+
   // Hide edit button when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -142,12 +167,37 @@ function Bingo() {
       if (result.success && result.tiles) {
         // Ensure tiles have the correct structure
         const loadedTiles = result.tiles
+        console.log('Raw loaded tiles:', loadedTiles)
+        console.log('Loaded tiles type:', typeof loadedTiles, 'isArray:', Array.isArray(loadedTiles))
+        
         // Validate and set tiles
         if (Array.isArray(loadedTiles) && loadedTiles.length === 5) {
-          console.log('Loading tiles from storage:', loadedTiles)
-          setTiles(loadedTiles)
+          // Validate each row is an array with 5 columns
+          const isValid = loadedTiles.every(row => 
+            Array.isArray(row) && row.length === 5 && 
+            row.every(tile => tile && typeof tile === 'object' && 'content' in tile && 'completed' in tile)
+          )
+          
+          if (isValid) {
+            console.log('✅ Valid tile structure, setting tiles:', loadedTiles)
+            console.log('Sample tile [0][0]:', loadedTiles[0]?.[0])
+            setTiles(loadedTiles)
+          } else {
+            console.warn('⚠️ Invalid tile structure - rows/columns mismatch:', {
+              length: loadedTiles.length,
+              firstRowLength: loadedTiles[0]?.length,
+              firstRow: loadedTiles[0],
+              firstTile: loadedTiles[0]?.[0]
+            })
+            console.warn('Using default empty tiles')
+          }
         } else {
-          console.warn('Invalid tile structure loaded:', loadedTiles)
+          console.warn('⚠️ Invalid tile structure - not a 5x5 array:', {
+            type: typeof loadedTiles,
+            isArray: Array.isArray(loadedTiles),
+            length: Array.isArray(loadedTiles) ? loadedTiles.length : 'N/A',
+            loadedTiles
+          })
           console.warn('Using default empty tiles')
         }
       } else if (result.success && !result.tiles) {
@@ -379,6 +429,12 @@ function Bingo() {
                       handleTileDoubleClick(rowIndex, colIndex)
                     }}
                   />
+                  {/* Debug: Show tile content in corner for debugging */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="absolute top-0 left-0 text-[6px] text-gray-500 z-30 bg-black/50 px-1">
+                      {tile.content ? `"${tile.content.substring(0, 10)}"` : 'empty'}
+                    </div>
+                  )}
 
                   {/* Edit Button (shown on click) */}
                   {!tile.completed && !isEditing && showEditBtn && (

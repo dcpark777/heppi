@@ -108,15 +108,23 @@ function Bingo() {
     setLoading(true)
     try {
       const result = await loadBingoCard(CARD_ID)
+      console.log('Load result:', { success: result.success, hasTiles: !!result.tiles })
+      
       if (result.success && result.tiles) {
         // Ensure tiles have the correct structure
         const loadedTiles = result.tiles
         // Validate and set tiles
         if (Array.isArray(loadedTiles) && loadedTiles.length === 5) {
+          console.log('Loading tiles from storage:', loadedTiles)
           setTiles(loadedTiles)
         } else {
-          console.warn('Invalid tile structure loaded, using default')
+          console.warn('Invalid tile structure loaded:', loadedTiles)
+          console.warn('Using default empty tiles')
         }
+      } else if (result.success && !result.tiles) {
+        console.log('No saved tiles found, using default empty tiles')
+      } else {
+        console.warn('Load failed or returned no data:', result)
       }
     } catch (error) {
       console.error('Failed to load bingo card:', error)

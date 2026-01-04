@@ -148,6 +148,19 @@ export async function loadBingoCard(cardId) {
     return { success: true, tiles: null }
   } catch (error) {
     console.error('Error loading bingo card from DynamoDB:', error)
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      requestId: error.$metadata?.requestId
+    })
+    
+    // Check for CORS errors
+    if (error.message?.includes('CORS') || error.message?.includes('Network') || error.name === 'NetworkError') {
+      console.error('⚠️ CORS or Network Error - DynamoDB cannot be accessed directly from browser')
+      console.error('💡 Solution: Use a backend API (Vercel Serverless Functions) or AWS Cognito')
+    }
+    
     // Fallback to localStorage on error
     try {
       const stored = localStorage.getItem(`bingo-card-${cardId}`)

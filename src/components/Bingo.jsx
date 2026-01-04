@@ -10,24 +10,44 @@ import {
 function TileContent({ content, completed, onChange, onDoubleClick }) {
   const divRef = useRef(null)
   const isFocusedRef = useRef(false)
+  const lastContentRef = useRef(content)
 
   useEffect(() => {
-    if (divRef.current && !isFocusedRef.current) {
+    // Only update if content changed externally and we're not focused
+    if (divRef.current && !isFocusedRef.current && lastContentRef.current !== content) {
       divRef.current.textContent = content
+      lastContentRef.current = content
     }
   }, [content])
+
+  const handleInput = (e) => {
+    if (!completed) {
+      const newContent = e.target.textContent || ''
+      // Update immediately on input
+      onChange(newContent)
+      lastContentRef.current = newContent
+    }
+  }
+
+  const handleBlur = (e) => {
+    isFocusedRef.current = false
+    if (!completed) {
+      const finalContent = e.target.textContent || ''
+      // Ensure we save the final content
+      if (finalContent !== lastContentRef.current) {
+        onChange(finalContent)
+        lastContentRef.current = finalContent
+      }
+    }
+  }
 
   return (
     <div
       ref={divRef}
       contentEditable={!completed}
       suppressContentEditableWarning={true}
-      onBlur={(e) => {
-        isFocusedRef.current = false
-        if (!completed) {
-          onChange(e.target.textContent || '')
-        }
-      }}
+      onInput={handleInput}
+      onBlur={handleBlur}
       onFocus={() => {
         isFocusedRef.current = true
       }}
@@ -149,6 +169,14 @@ function Bingo() {
 
     // Set new timeout to debounce saves
     saveTimeoutRef.current = setTimeout(async () => {
+      // Log what we're about to save
+      const tilesWithContent = tilesToSave.flat().filter(t => t.content && t.content.trim() !== '')
+      console.log('💾 saveCard called with:', {
+        totalTiles: tilesToSave.flat().length,
+        tilesWithContent: tilesWithContent.length,
+        sampleTiles: tilesWithContent.slice(0, 3).map(t => ({ content: t.content, completed: t.completed }))
+      })
+      
       setSaving(true)
       setSaveError(null)
       try {
@@ -158,6 +186,8 @@ function Bingo() {
           console.error('Save failed:', result)
         } else if (result.fallback) {
           setSaveError('Saved locally only - not synced to cloud')
+        } else {
+          console.log('✅ Save completed successfully')
         }
       } catch (error) {
         console.error('Failed to save bingo card:', error)

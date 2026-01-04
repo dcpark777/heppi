@@ -88,7 +88,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
               <span className="text-white font-medium text-base md:text-sm select-none">Completed</span>
             </label>
           </div>
-          {/* Show completion date if tile is completed */}
+          {/* Show completion date and user if tile is completed */}
           {completed && tile.completedAt && (
             <div className="text-gray-500 text-xs md:text-xs ml-9 md:ml-8">
               Completed on {new Date(tile.completedAt).toLocaleDateString('en-US', { 
@@ -98,6 +98,9 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
                 hour: 'numeric',
                 minute: '2-digit'
               })}
+              {tile.updatedBy && (
+                <span className="ml-2">by {tile.updatedBy.charAt(0).toUpperCase() + tile.updatedBy.slice(1)}</span>
+              )}
             </div>
           )}
         </div>
@@ -309,7 +312,8 @@ function Bingo() {
       col,
       content: tile.content,
       completed: tile.completed,
-      completedAt: tile.completedAt || null
+      completedAt: tile.completedAt || null,
+      updatedBy: tile.updatedBy || null
     })
   }
 
@@ -319,6 +323,7 @@ function Bingo() {
     const { row, col } = modalTile
     const oldCompleted = tiles[row][col].completed
     const oldCompletedAt = tiles[row][col].completedAt
+    const username = getCurrentUsername()
     
     // Calculate completedAt: set when marking as completed, preserve if already completed, clear when uncompleted
     const now = new Date().toISOString()
@@ -334,7 +339,8 @@ function Bingo() {
         ...newTiles[row][col],
         content: newContent,
         completed: newCompleted,
-        completedAt: newCompletedAt
+        completedAt: newCompletedAt,
+        updatedBy: username // Track who made the update
       }
       return newTiles
     })

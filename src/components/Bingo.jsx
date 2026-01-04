@@ -9,11 +9,13 @@ import {
 // Modal component for editing tile content
 function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   const [content, setContent] = useState('')
+  const [completed, setCompleted] = useState(false)
   const inputRef = useRef(null)
 
   useEffect(() => {
     if (isOpen && tile) {
       setContent(tile.content || '')
+      setCompleted(tile.completed || false)
       // Focus input after modal opens
       setTimeout(() => {
         inputRef.current?.focus()
@@ -25,7 +27,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   if (!isOpen || !tile) return null
 
   const handleSave = () => {
-    onSave(content)
+    onSave(content, completed)
   }
 
   const handleKeyDown = (e) => {
@@ -39,14 +41,19 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 touch-none"
       onClick={onCancel}
+      onTouchStart={(e) => {
+        // Prevent body scroll when modal is open on mobile
+        e.stopPropagation()
+      }}
     >
       <div 
-        className="bg-gray-800 rounded-lg p-6 max-w-md w-full border-2 border-gray-700"
+        className="bg-gray-800 rounded-lg p-4 md:p-6 max-w-md w-full border-2 border-gray-700 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
       >
-        <h2 className="text-white text-xl font-bold mb-4">Edit Tile Content</h2>
+        <h2 className="text-white text-lg md:text-xl font-bold mb-4">Edit Tile</h2>
         
         <textarea
           ref={inputRef}
@@ -54,27 +61,62 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Enter tile content..."
-          className="w-full bg-gray-700 text-white rounded-lg p-3 mb-4 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-          rows={4}
+          className="w-full bg-gray-700 text-white rounded-lg p-3 mb-4 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+          rows={5}
           autoFocus
+          style={{
+            fontSize: '16px', // Prevents zoom on iOS
+            WebkitAppearance: 'none'
+          }}
         />
+        
+        {/* Completion Toggle - Larger for mobile */}
+        <div className="mb-6 flex items-center gap-3">
+          <label className="flex items-center gap-3 cursor-pointer touch-manipulation">
+            <input
+              type="checkbox"
+              checked={completed}
+              onChange={(e) => setCompleted(e.target.checked)}
+              className="w-6 h-6 md:w-5 md:h-5 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800 cursor-pointer touch-manipulation"
+              style={{
+                minWidth: '24px',
+                minHeight: '24px'
+              }}
+            />
+            <span className="text-white font-medium text-base md:text-sm select-none">Completed</span>
+          </label>
+        </div>
         
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            onTouchEnd={(e) => {
+              e.preventDefault()
+              onCancel()
+            }}
+            className="px-6 py-3 md:px-4 md:py-2 bg-gray-600 active:bg-gray-700 text-white rounded-lg transition-colors touch-manipulation text-base md:text-sm font-medium min-h-[44px] md:min-h-0"
+            style={{
+              WebkitTapHighlightColor: 'transparent'
+            }}
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+            onTouchEnd={(e) => {
+              e.preventDefault()
+              handleSave()
+            }}
+            className="px-6 py-3 md:px-4 md:py-2 bg-green-600 active:bg-green-700 text-white rounded-lg transition-colors touch-manipulation text-base md:text-sm font-medium min-h-[44px] md:min-h-0"
+            style={{
+              WebkitTapHighlightColor: 'transparent'
+            }}
           >
             Save
           </button>
         </div>
         
-        <p className="text-gray-400 text-xs mt-3 text-center">
+        <p className="text-gray-400 text-xs mt-3 text-center hidden md:block">
           Press Cmd/Ctrl + Enter to save, Esc to cancel
         </p>
       </div>
@@ -141,21 +183,23 @@ function TileContent({ content, completed, isEditing, onChange, onDoubleClick })
           : 'cursor-default'
       }`}
       style={{
-        fontSize: 'clamp(0.4rem, 1.5vw, 0.65rem)', // Responsive: min 6.4px, preferred 1.5vw, max 10.4px
+        fontSize: 'clamp(0.5rem, 2.5vw, 0.7rem)', // Larger on mobile for readability
         overflow: 'auto',
         wordWrap: 'break-word',
         overflowWrap: 'break-word',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2px 4px',
+        padding: '4px 6px',
         width: '100%',
         height: '100%',
         whiteSpace: 'normal',
         hyphens: 'auto',
         maxHeight: '100%',
         maxWidth: '100%',
-        lineHeight: '1.15'
+        lineHeight: '1.2',
+        WebkitUserSelect: 'none',
+        userSelect: 'none'
       }}
       data-placeholder={content ? '' : '...'}
     />
@@ -178,7 +222,6 @@ function Bingo() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
-  const [showEditButton, setShowEditButton] = useState(null) // Track which tile shows edit button: {row, col}
   const [modalTile, setModalTile] = useState(null) // Track which tile is being edited in modal: {row, col, content, completed}
   const isInitialLoadRef = useRef(true) // Track if we're still loading initial data
 
@@ -199,22 +242,6 @@ function Bingo() {
     }
   }, [tiles, loading])
 
-  // Hide edit button when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      // If clicking outside a tile, hide the edit button
-      if (showEditButton && !e.target.closest('.bingo-tile')) {
-        setShowEditButton(null)
-      }
-    }
-
-    if (showEditButton) {
-      document.addEventListener('click', handleClickOutside)
-      return () => {
-        document.removeEventListener('click', handleClickOutside)
-      }
-    }
-  }, [showEditButton])
 
   // Save on page unload to ensure nothing is lost (only if user made changes)
   useEffect(() => {
@@ -340,32 +367,7 @@ function Bingo() {
   }, [])
 
   const handleTileClick = (row, col) => {
-    // If tile is completed, don't show edit button
-    if (tiles[row][col].completed) {
-      return
-    }
-    
-    // If edit button is already shown for this tile, open modal
-    if (showEditButton?.row === row && showEditButton?.col === col) {
-      const tile = tiles[row][col]
-      setModalTile({
-        row,
-        col,
-        content: tile.content,
-        completed: tile.completed
-      })
-      setShowEditButton(null)
-    } else {
-      // Show edit button for this tile
-      setShowEditButton({ row, col })
-    }
-  }
-
-  const handleEditButtonClick = (row, col, e) => {
-    e.stopPropagation()
-    if (tiles[row][col].completed) {
-      return // Don't allow editing completed tiles
-    }
+    // Open modal directly when tile is clicked
     const tile = tiles[row][col]
     setModalTile({
       row,
@@ -373,14 +375,35 @@ function Bingo() {
       content: tile.content,
       completed: tile.completed
     })
-    setShowEditButton(null)
   }
 
-  const handleModalSave = (newContent) => {
+  const handleModalSave = (newContent, newCompleted) => {
     if (!modalTile) return
     
-    const { row, col, completed } = modalTile
-    saveTile(row, col, newContent, completed)
+    const { row, col } = modalTile
+    const oldCompleted = tiles[row][col].completed
+    
+    // Update tile state
+    setTiles(prev => {
+      const newTiles = [...prev]
+      newTiles[row] = [...newTiles[row]]
+      newTiles[row][col] = {
+        ...newTiles[row][col],
+        content: newContent,
+        completed: newCompleted
+      }
+      return newTiles
+    })
+    
+    // Record status change if completion status changed
+    if (oldCompleted !== newCompleted) {
+      recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted).catch(err => 
+        console.error('Failed to record status change:', err)
+      )
+    }
+    
+    // Save to DynamoDB
+    saveTile(row, col, newContent, newCompleted)
     setModalTile(null)
   }
 
@@ -388,47 +411,6 @@ function Bingo() {
     setModalTile(null)
   }
 
-  const handleTileDoubleClick = (row, col) => {
-    // Don't toggle if modal is open for this tile
-    if (modalTile && modalTile.row === row && modalTile.col === col) {
-      return
-    }
-    
-    setTiles(prev => {
-      const newTiles = [...prev]
-      const oldStatus = newTiles[row][col].completed
-      const newStatus = !oldStatus
-      
-      newTiles[row] = [...newTiles[row]]
-      const updatedTile = {
-        ...newTiles[row][col],
-        completed: newStatus
-      }
-      newTiles[row][col] = updatedTile
-      
-      // Hide edit button if it was showing
-      if (showEditButton?.row === row && showEditButton?.col === col) {
-        setShowEditButton(null)
-      }
-      
-      // Close modal if open for this tile
-      if (modalTile?.row === row && modalTile?.col === col) {
-        setModalTile(null)
-      }
-      
-      // Record status change
-      if (oldStatus !== newStatus) {
-        recordStatusChange(CARD_ID, row, col, oldStatus, newStatus).catch(err => 
-          console.error('Failed to record status change:', err)
-        )
-      }
-      
-      // Save individual tile immediately when toggling completion
-      saveTile(row, col, updatedTile.content, updatedTile.completed)
-      
-      return newTiles
-    })
-  }
 
 
   if (loading) {
@@ -444,8 +426,11 @@ function Bingo() {
       {/* Back to Home button - top left */}
       <Link
         to="/"
-        className="absolute top-4 left-4 z-20 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-lg"
+        className="absolute top-4 left-4 z-20 bg-gray-600 active:bg-gray-700 text-white font-semibold py-3 px-3 md:py-2 md:px-2 rounded-lg transition-colors text-xl md:text-lg touch-manipulation min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
         aria-label="Back to Home"
+        style={{
+          WebkitTapHighlightColor: 'transparent'
+        }}
       >
         ←
       </Link>
@@ -464,28 +449,33 @@ function Bingo() {
         </div>
       )}
 
-      <div className="w-full max-w-4xl">
+      <div className="w-full max-w-4xl px-2 md:px-0">
         {/* Header */}
-        <div className="text-center text-white mb-8">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4">2026 Bingo Card</h1>
+        <div className="text-center text-white mb-6 md:mb-8">
+          <h1 className="text-2xl md:text-4xl lg:text-6xl font-bold mb-2 md:mb-4">2026 Bingo Card</h1>
         </div>
 
         {/* Bingo Grid */}
-        <div className="grid grid-cols-5 gap-1.5 md:gap-4 mb-8">
+        <div className="grid grid-cols-5 gap-2 md:gap-4 mb-8">
           {tiles.map((row, rowIndex) =>
             row.map((tile, colIndex) => {
-              const showEditBtn = showEditButton?.row === rowIndex && showEditButton?.col === colIndex
-              
               return (
                 <div
                   key={`${rowIndex}-${colIndex}`}
                   onClick={() => handleTileClick(rowIndex, colIndex)}
-                  onDoubleClick={() => handleTileDoubleClick(rowIndex, colIndex)}
-                  className={`bingo-tile relative aspect-square bg-gray-800 border-2 rounded-lg p-0.5 md:p-2 flex flex-col items-center justify-center transition-all overflow-hidden cursor-pointer ${
+                  onTouchEnd={(e) => {
+                    e.preventDefault()
+                    handleTileClick(rowIndex, colIndex)
+                  }}
+                  className={`bingo-tile relative aspect-square bg-gray-800 border-2 rounded-lg p-1 md:p-2 flex flex-col items-center justify-center transition-all overflow-hidden cursor-pointer touch-manipulation active:opacity-80 ${
                     tile.completed
                       ? 'border-green-600'
-                      : 'border-gray-700 hover:border-gray-500'
+                      : 'border-gray-700 active:border-gray-500'
                   }`}
+                  style={{
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation'
+                  }}
                 >
                   {/* Completion Overlay */}
                   {tile.completed && (
@@ -500,29 +490,12 @@ function Bingo() {
                     completed={tile.completed}
                     isEditing={false}
                     onChange={() => {}}
-                    onDoubleClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      handleTileDoubleClick(rowIndex, colIndex)
-                    }}
+                    onDoubleClick={() => {}}
                   />
                   {/* Debug: Show tile content in corner for debugging */}
                   {process.env.NODE_ENV === 'development' && (
                     <div className="absolute top-0 left-0 text-[6px] text-gray-500 z-30 bg-black/50 px-1">
                       {tile.content ? `"${tile.content.substring(0, 10)}"` : 'empty'}
-                    </div>
-                  )}
-
-                  {/* Edit Button (shown on click) */}
-                  {!tile.completed && showEditBtn && (
-                    <div className="absolute bottom-1 right-1 z-20">
-                      <button
-                        onClick={(e) => handleEditButtonClick(rowIndex, colIndex, e)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded transition-colors"
-                        title="Edit tile"
-                      >
-                        ✏️
-                      </button>
                     </div>
                   )}
                 </div>
@@ -540,11 +513,9 @@ function Bingo() {
         />
 
         {/* Instructions */}
-        <div className="text-center text-gray-400 text-sm md:text-base">
-          <p className="mb-2">👆 Click/tap a tile to show the edit button (✏️)</p>
-          <p className="mb-2">✏️ Click the edit button to open the edit modal</p>
-          <p className="mb-2">💡 Double click/tap a tile to toggle completion status</p>
-          <p>🔒 Completed tiles cannot be edited - mark them incomplete first</p>
+        <div className="text-center text-gray-400 text-xs md:text-sm px-4">
+          <p className="mb-2">👆 Tap a tile to open the edit modal</p>
+          <p>✅ Use the checkbox in the modal to mark tiles as completed</p>
         </div>
       </div>
     </div>

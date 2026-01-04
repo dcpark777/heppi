@@ -47,3 +47,6 @@ terraform/.terraform.tfstate.lock.info
 .DS_Store
 Thumbs.db
 
+# Scripts
+scripts/
+

@@ -469,8 +469,7 @@ function Bingo() {
 
         {/* Instructions */}
         <div className="text-center text-gray-400 text-xs md:text-sm px-4">
-          <p className="mb-2">👆 Tap a tile to open the edit modal</p>
-          <p>✅ Use the checkbox in the modal to mark tiles as completed</p>
+          <p>👆 Tap a tile to edit</p>
         </div>
       </div>
     </div>

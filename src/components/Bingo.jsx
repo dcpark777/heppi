@@ -138,73 +138,31 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   )
 }
 
-// Component to handle contentEditable with proper cursor management
-function TileContent({ content, completed, isEditing, onChange, onDoubleClick }) {
+// Component to display tile content
+function TileContent({ content, completed }) {
   const divRef = useRef(null)
-  const isFocusedRef = useRef(false)
-  const lastContentRef = useRef(content)
-
-  // Initialize content on mount
-  useEffect(() => {
-    if (divRef.current && !divRef.current.textContent && content) {
-      divRef.current.textContent = content
-      lastContentRef.current = content
-    }
-  }, []) // Only run on mount
 
   useEffect(() => {
-    // Only update if content changed externally and we're not focused
-    if (divRef.current && !isFocusedRef.current) {
-      const currentText = divRef.current.textContent || ''
-      const newText = content || ''
-      if (currentText !== newText) {
-        console.log('TileContent updating:', { currentText, newText, isEditing, content })
-        divRef.current.textContent = newText
-        lastContentRef.current = newText
-      }
+    if (divRef.current) {
+      divRef.current.textContent = content || ''
     }
-  }, [content, isEditing])
-
-  const handleInput = (e) => {
-    if (isEditing && !completed) {
-      const newContent = e.target.textContent || ''
-      // Update immediately on input
-      onChange(newContent)
-      lastContentRef.current = newContent
-    }
-  }
-
-  const handleBlur = (e) => {
-    isFocusedRef.current = false
-  }
+  }, [content])
 
   return (
     <div
       ref={divRef}
-      contentEditable={isEditing && !completed}
-      suppressContentEditableWarning={true}
-      onInput={handleInput}
-      onBlur={handleBlur}
-      onFocus={() => {
-        isFocusedRef.current = true
-      }}
-      onDoubleClick={onDoubleClick}
       className={`relative z-10 w-full h-full bg-transparent text-white text-center font-semibold border-none outline-none ${
-        completed 
-          ? 'line-through opacity-50 cursor-default' 
-          : isEditing
-          ? 'cursor-text'
-          : 'cursor-default'
+        completed ? 'opacity-50' : ''
       }`}
       style={{
-        fontSize: 'clamp(0.5rem, 2.5vw, 0.7rem)', // Larger on mobile for readability
+        fontSize: 'clamp(0.4rem, 1.5vw, 0.65rem)',
         overflow: 'auto',
         wordWrap: 'break-word',
         overflowWrap: 'break-word',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '4px 6px',
+        padding: '4px',
         width: '100%',
         height: '100%',
         whiteSpace: 'normal',
@@ -212,10 +170,8 @@ function TileContent({ content, completed, isEditing, onChange, onDoubleClick })
         maxHeight: '100%',
         maxWidth: '100%',
         lineHeight: '1.2',
-        WebkitUserSelect: 'none',
-        userSelect: 'none'
+        WebkitTapHighlightColor: 'transparent'
       }}
-      data-placeholder={content ? '' : '...'}
     />
   )
 }
@@ -245,17 +201,6 @@ function Bingo() {
     loadCard()
   }, [])
 
-  // Debug: Log tiles whenever they change
-  useEffect(() => {
-    if (!loading) {
-      console.log('🔄 Tiles state updated:', tiles)
-      console.log('Sample tiles:', {
-        '[0][0]': tiles[0]?.[0],
-        '[0][1]': tiles[0]?.[1],
-        '[1][0]': tiles[1]?.[0],
-      })
-    }
-  }, [tiles, loading])
 
 
   // Save on page unload to ensure nothing is lost (only if user made changes)
@@ -263,9 +208,8 @@ function Bingo() {
     const handleBeforeUnload = () => {
       // Only save if we've finished loading and there might be unsaved changes in modal
       if (!isInitialLoadRef.current && modalTile) {
-        // Save the tile that's currently being edited in modal
         saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt).catch(err => 
-          console.error(`Failed to save tile ${modalTile.row}-${modalTile.col} on unload:`, err)
+          console.error(`Failed to save tile on unload:`, err)
         )
       }
     }
@@ -280,83 +224,54 @@ function Bingo() {
     setLoading(true)
     try {
       const result = await loadBingoCard(CARD_ID)
-      console.log('Load result:', { success: result.success, hasTiles: !!result.tiles })
       
       if (result.success && result.tiles) {
-        // Ensure tiles have the correct structure
         const loadedTiles = result.tiles
-        console.log('Raw loaded tiles:', loadedTiles)
-        console.log('Loaded tiles type:', typeof loadedTiles, 'isArray:', Array.isArray(loadedTiles))
         
         // Validate and set tiles
         if (Array.isArray(loadedTiles) && loadedTiles.length === 5) {
-          // Validate each row is an array with 5 columns
           const isValid = loadedTiles.every(row => 
             Array.isArray(row) && row.length === 5 && 
             row.every(tile => tile && typeof tile === 'object' && 'content' in tile && 'completed' in tile)
           )
           
           if (isValid) {
-            console.log('✅ Valid tile structure, setting tiles:', loadedTiles)
-            console.log('Sample tile [0][0]:', loadedTiles[0]?.[0])
             setTiles(loadedTiles)
           } else {
-            console.warn('⚠️ Invalid tile structure - rows/columns mismatch:', {
-              length: loadedTiles.length,
-              firstRowLength: loadedTiles[0]?.length,
-              firstRow: loadedTiles[0],
-              firstTile: loadedTiles[0]?.[0]
-            })
-            console.warn('Using default empty tiles')
+            console.warn('Invalid tile structure - using default empty tiles')
           }
         } else {
-          console.warn('⚠️ Invalid tile structure - not a 5x5 array:', {
-            type: typeof loadedTiles,
-            isArray: Array.isArray(loadedTiles),
-            length: Array.isArray(loadedTiles) ? loadedTiles.length : 'N/A',
-            loadedTiles
-          })
-          console.warn('Using default empty tiles')
+          console.warn('Invalid tile structure - using default empty tiles')
         }
-      } else if (result.success && !result.tiles) {
-        console.log('No saved tiles found, using default empty tiles')
-      } else {
-        console.warn('Load failed or returned no data:', result)
       }
       
-      // Log if we're using fallback
       if (result.fallback) {
-        console.warn('⚠️ Using localStorage fallback - data not synced from DynamoDB')
+        console.warn('Using localStorage fallback - data not synced from DynamoDB')
       }
     } catch (error) {
       console.error('Failed to load bingo card:', error)
-      // On error, keep the default empty tiles
     } finally {
       setLoading(false)
-      // Mark that initial load is complete - now saves are allowed
       isInitialLoadRef.current = false
     }
   }
 
   // Save a single tile - only saves when Save button is clicked
   const saveTile = useCallback(async (row, col, content, completed, completedAt = null) => {
-    // Don't save during initial load
     if (isInitialLoadRef.current) {
-      console.log('⏸️ Skipping save - still loading initial data')
       return
     }
 
     setSaving(true)
     setSaveError(null)
-      try {
-        const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt)
+    try {
+      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt)
       if (!result.success) {
         setSaveError('Failed to save - check console for details')
         console.error('Save failed:', result)
       } else if (result.fallback) {
         setSaveError('Saved locally only - not synced to cloud')
       } else {
-        console.log(`✅ Tile ${row}-${col} saved successfully`)
         // Update the tile in state with saved content
         setTiles(prev => {
           const newTiles = [...prev]
@@ -373,7 +288,6 @@ function Bingo() {
       setSaveError('Save failed - check console')
     } finally {
       setSaving(false)
-      // Clear error after 5 seconds
       setTimeout(() => setSaveError(null), 5000)
     }
   }, [])
@@ -416,7 +330,6 @@ function Bingo() {
       return newTiles
     })
     
-    // Record status change if completion status changed
     if (oldCompleted !== newCompleted) {
       recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted).catch(err => 
         console.error('Failed to record status change:', err)
@@ -509,16 +422,7 @@ function Bingo() {
                   <TileContent
                     content={tile.content}
                     completed={tile.completed}
-                    isEditing={false}
-                    onChange={() => {}}
-                    onDoubleClick={() => {}}
                   />
-                  {/* Debug: Show tile content in corner for debugging */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className="absolute top-0 left-0 text-[6px] text-gray-500 z-30 bg-black/50 px-1">
-                      {tile.content ? `"${tile.content.substring(0, 10)}"` : 'empty'}
-                    </div>
-                  )}
                 </div>
               )
             })

@@ -6,9 +6,14 @@ function ProtectedRoute({ children }) {
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    // Check if user is already authenticated
+    // Check if user is already authenticated with valid username
     const authenticated = sessionStorage.getItem('sydplove_authenticated') === 'true'
-    setIsAuthenticated(authenticated)
+    const username = sessionStorage.getItem('sydplove_username')
+    const validUsers = ['sarah', 'dan']
+    
+    // User must be authenticated and have a valid username
+    const isValid = authenticated && username && validUsers.includes(username.toLowerCase())
+    setIsAuthenticated(isValid)
     setChecking(false)
   }, [])
 

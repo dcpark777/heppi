@@ -13,6 +13,7 @@ function Holidays() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('sydplove_authenticated')
+    sessionStorage.removeItem('sydplove_username')
     window.location.href = '/'
   }
 

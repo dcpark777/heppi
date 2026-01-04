@@ -352,9 +352,6 @@ function Bingo() {
           }
           return newTiles
         })
-        // Exit edit mode
-        setEditingTile(null)
-        setEditContent('')
       }
     } catch (error) {
       console.error(`Failed to save tile ${row}-${col}:`, error)

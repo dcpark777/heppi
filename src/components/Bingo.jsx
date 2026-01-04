@@ -79,15 +79,48 @@ function Bingo() {
     loadCard()
   }, [])
 
+  // Save on page unload to ensure nothing is lost
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Save immediately before page unload
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      saveBingoCard(CARD_ID, tiles).catch(err => 
+        console.error('Failed to save on unload:', err)
+      )
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      // Also save on component unmount
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      saveBingoCard(CARD_ID, tiles).catch(err => 
+        console.error('Failed to save on unmount:', err)
+      )
+    }
+  }, [tiles])
+
   const loadCard = async () => {
     setLoading(true)
     try {
       const result = await loadBingoCard(CARD_ID)
       if (result.success && result.tiles) {
-        setTiles(result.tiles)
+        // Ensure tiles have the correct structure
+        const loadedTiles = result.tiles
+        // Validate and set tiles
+        if (Array.isArray(loadedTiles) && loadedTiles.length === 5) {
+          setTiles(loadedTiles)
+        } else {
+          console.warn('Invalid tile structure loaded, using default')
+        }
       }
     } catch (error) {
       console.error('Failed to load bingo card:', error)
+      // On error, keep the default empty tiles
     } finally {
       setLoading(false)
     }
@@ -155,14 +188,6 @@ function Bingo() {
     })
   }
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current)
-      }
-    }
-  }, [])
 
   if (loading) {
     return (

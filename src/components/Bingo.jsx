@@ -395,20 +395,23 @@ function Bingo() {
     
     const { row, col } = modalTile
     const oldCompleted = tiles[row][col].completed
+    const oldCompletedAt = tiles[row][col].completedAt
+    
+    // Calculate completedAt: set when marking as completed, preserve if already completed, clear when uncompleted
+    const now = new Date().toISOString()
+    const newCompletedAt = newCompleted 
+      ? (oldCompletedAt || now)
+      : null
     
     // Update tile state
     setTiles(prev => {
       const newTiles = [...prev]
       newTiles[row] = [...newTiles[row]]
-      const now = new Date().toISOString()
       newTiles[row][col] = {
         ...newTiles[row][col],
         content: newContent,
         completed: newCompleted,
-        // Set completedAt when marking as completed, preserve if already completed, clear when uncompleted
-        completedAt: newCompleted 
-          ? (prev[row][col].completedAt || now)
-          : null
+        completedAt: newCompletedAt
       }
       return newTiles
     })
@@ -420,9 +423,8 @@ function Bingo() {
       )
     }
     
-    // Save to DynamoDB - pass the completedAt from the updated state
-    const updatedTile = tiles[row][col]
-    saveTile(row, col, newContent, newCompleted, updatedTile.completedAt)
+    // Save to DynamoDB - use the calculated completedAt
+    saveTile(row, col, newContent, newCompleted, newCompletedAt)
     setModalTile(null)
   }
 

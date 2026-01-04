@@ -57,8 +57,10 @@ if (isAWSConfigured()) {
   console.warn('⚠️ AWS client not initialized - credentials missing')
 }
 
-const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || 'bingo-cards'
-const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || 'bingo-changes'
+// Get environment (dev or prod) from env var, default to dev for local development
+const ENV = import.meta.env.VITE_ENVIRONMENT || 'dev'
+const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || `bingo-cards-${ENV}`
+const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || `bingo-changes-${ENV}`
 
 /**
  * Generate tile ID for a specific tile

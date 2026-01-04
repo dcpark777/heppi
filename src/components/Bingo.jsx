@@ -72,6 +72,7 @@ function Bingo() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
   const saveTimeoutRef = useRef(null)
 
   // Load bingo card on mount
@@ -126,6 +127,11 @@ function Bingo() {
       } else {
         console.warn('Load failed or returned no data:', result)
       }
+      
+      // Log if we're using fallback
+      if (result.fallback) {
+        console.warn('⚠️ Using localStorage fallback - data not synced from DynamoDB')
+      }
     } catch (error) {
       console.error('Failed to load bingo card:', error)
       // On error, keep the default empty tiles
@@ -144,12 +150,24 @@ function Bingo() {
     // Set new timeout to debounce saves
     saveTimeoutRef.current = setTimeout(async () => {
       setSaving(true)
+      setSaveError(null)
       try {
-        await saveBingoCard(CARD_ID, tilesToSave)
+        const result = await saveBingoCard(CARD_ID, tilesToSave)
+        if (!result.success) {
+          setSaveError('Failed to save - check console for details')
+          console.error('Save failed:', result)
+        } else if (result.fallback) {
+          setSaveError('Saved locally only - not synced to cloud')
+        }
       } catch (error) {
         console.error('Failed to save bingo card:', error)
+        setSaveError('Save failed - check console')
       } finally {
         setSaving(false)
+        // Clear error after 5 seconds
+        if (saveError) {
+          setTimeout(() => setSaveError(null), 5000)
+        }
       }
     }, 1000) // Save 1 second after last change
   }, [])
@@ -220,6 +238,13 @@ function Bingo() {
       {saving && (
         <div className="absolute top-4 right-4 z-20 bg-gray-800 text-white text-xs px-3 py-1 rounded-lg">
           Saving...
+        </div>
+      )}
+      
+      {/* Save error indicator */}
+      {saveError && (
+        <div className="absolute top-4 right-4 z-20 bg-red-600 text-white text-xs px-3 py-1 rounded-lg max-w-xs">
+          ⚠️ {saveError}
         </div>
       )}
 

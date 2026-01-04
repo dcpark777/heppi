@@ -43,12 +43,18 @@ if (isAWSConfigured()) {
         accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
         secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
       },
+      // Add request handler for better error reporting
+      requestHandler: {
+        requestTimeout: 10000, // 10 second timeout
+      },
     })
     docClient = DynamoDBDocumentClient.from(client)
-    console.log('AWS DynamoDB client initialized')
+    console.log('✅ AWS DynamoDB client initialized')
   } catch (error) {
-    console.error('Failed to initialize AWS client:', error)
+    console.error('❌ Failed to initialize AWS client:', error)
   }
+} else {
+  console.warn('⚠️ AWS client not initialized - credentials missing')
 }
 
 const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || 'bingo-cards'
@@ -78,27 +84,48 @@ export async function saveBingoCard(cardId, tiles) {
       updatedAt: new Date().toISOString(),
     }
 
-    console.log('Saving to DynamoDB:', { cardId, table: BINGO_CARD_TABLE })
-    await docClient.send(
+    console.log('Saving to DynamoDB:', { cardId, table: BINGO_CARD_TABLE, tileCount: tiles.length })
+    const result = await docClient.send(
       new PutCommand({
         TableName: BINGO_CARD_TABLE,
         Item: item,
       })
     )
 
-    console.log('Successfully saved to DynamoDB')
+    console.log('Successfully saved to DynamoDB', result)
     return { success: true }
   } catch (error) {
-    console.error('Error saving bingo card to DynamoDB:', error)
+    console.error('❌ Error saving bingo card to DynamoDB:', error)
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      requestId: error.$metadata?.requestId,
+      statusCode: error.$metadata?.httpStatusCode
+    })
+    
+    // Check for specific error types
+    if (error.message?.includes('CORS') || error.message?.includes('Network') || error.name === 'NetworkError' || error.code === 'NetworkingError') {
+      console.error('⚠️ CORS or Network Error - DynamoDB cannot be accessed directly from browser')
+      console.error('💡 This is why changes on your phone are not persisting!')
+      console.error('💡 Solution: Use a backend API (Vercel Serverless Functions)')
+    }
+    
+    if (error.name === 'AccessDeniedException' || error.code === 'AccessDeniedException') {
+      console.error('⚠️ Access Denied - Check IAM permissions')
+    }
+    
     // Fallback to localStorage on error
     try {
       localStorage.setItem(`bingo-card-${cardId}`, JSON.stringify({
         tiles,
         updatedAt: new Date().toISOString(),
       }))
-      console.warn('Fell back to localStorage due to DynamoDB error')
-      return { success: true }
+      console.warn('✅ Fell back to localStorage - changes saved locally but NOT synced to DynamoDB')
+      console.warn('⚠️ This means changes on your phone will NOT sync to other devices')
+      return { success: true, fallback: true }
     } catch (localError) {
+      console.error('❌ Failed to save even to localStorage:', localError)
       return { success: false, error: error.message }
     }
   }
@@ -135,11 +162,19 @@ export async function loadBingoCard(cardId) {
       })
     )
 
+    console.log('DynamoDB response:', result)
+
     if (result.Item) {
-      console.log('Successfully loaded from DynamoDB')
+      console.log('Successfully loaded from DynamoDB, parsing tiles...')
+      // The tiles are stored as a JSON string, so we need to parse them
+      const tilesData = typeof result.Item.tiles === 'string' 
+        ? JSON.parse(result.Item.tiles)
+        : result.Item.tiles
+      
+      console.log('Parsed tiles:', tilesData)
       return {
         success: true,
-        tiles: JSON.parse(result.Item.tiles),
+        tiles: tilesData,
         updatedAt: result.Item.updatedAt,
       }
     }
@@ -147,17 +182,24 @@ export async function loadBingoCard(cardId) {
     console.log('No data found in DynamoDB for cardId:', cardId)
     return { success: true, tiles: null }
   } catch (error) {
-    console.error('Error loading bingo card from DynamoDB:', error)
+    console.error('❌ Error loading bingo card from DynamoDB:', error)
     console.error('Error details:', {
       name: error.name,
       message: error.message,
       code: error.code,
-      requestId: error.$metadata?.requestId
+      requestId: error.$metadata?.requestId,
+      stack: error.stack
     })
     
     // Check for CORS errors
-    if (error.message?.includes('CORS') || error.message?.includes('Network') || error.name === 'NetworkError') {
+    if (error.message?.includes('CORS') || 
+        error.message?.includes('Network') || 
+        error.name === 'NetworkError' ||
+        error.code === 'NetworkingError' ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('network error')) {
       console.error('⚠️ CORS or Network Error - DynamoDB cannot be accessed directly from browser')
+      console.error('💡 This is why loading from DynamoDB is not working!')
       console.error('💡 Solution: Use a backend API (Vercel Serverless Functions) or AWS Cognito')
     }
     
@@ -166,15 +208,19 @@ export async function loadBingoCard(cardId) {
       const stored = localStorage.getItem(`bingo-card-${cardId}`)
       if (stored) {
         const data = JSON.parse(stored)
-        console.warn('Fell back to localStorage due to DynamoDB error')
+        console.warn('✅ Fell back to localStorage due to DynamoDB error')
+        console.warn('⚠️ This means data is only available on this device/browser')
         return {
           success: true,
           tiles: data.tiles,
           updatedAt: data.updatedAt,
+          fallback: true
         }
       }
+      console.log('No localStorage data found either')
       return { success: true, tiles: null }
     } catch (localError) {
+      console.error('Failed to load from localStorage:', localError)
       return { success: false, error: error.message }
     }
   }

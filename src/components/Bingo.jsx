@@ -339,7 +339,7 @@ function Bingo() {
   }
 
   // Save a single tile - only saves when Save button is clicked
-  const saveTile = useCallback(async (row, col, content, completed) => {
+  const saveTile = useCallback(async (row, col, content, completed, completedAt = null) => {
     // Don't save during initial load
     if (isInitialLoadRef.current) {
       console.log('⏸️ Skipping save - still loading initial data')

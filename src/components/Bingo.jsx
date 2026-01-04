@@ -56,7 +56,7 @@ function Bingo() {
             row.map((tile, colIndex) => (
               <div
                 key={`${rowIndex}-${colIndex}`}
-                className="relative aspect-square bg-gray-800 border-2 border-gray-700 rounded-lg p-2 flex flex-col items-center justify-center transition-all hover:border-gray-500"
+                className="relative aspect-square bg-gray-800 border-2 border-gray-700 rounded-lg p-1 md:p-2 flex flex-col items-center justify-center transition-all hover:border-gray-500 overflow-hidden"
               >
                 {/* Completion Overlay */}
                 {tile.completed && (
@@ -66,24 +66,26 @@ function Bingo() {
                 )}
 
                 {/* Editable Content */}
-                <input
-                  type="text"
-                  value={tile.content}
-                  onChange={(e) => {
+                <div
+                  contentEditable={!tile.completed}
+                  suppressContentEditableWarning={true}
+                  onInput={(e) => {
                     if (!tile.completed) {
-                      handleContentChange(rowIndex, colIndex, e.target.value)
+                      handleContentChange(rowIndex, colIndex, e.target.textContent || '')
                     }
                   }}
-                  readOnly={tile.completed}
+                  onBlur={(e) => {
+                    if (!tile.completed) {
+                      handleContentChange(rowIndex, colIndex, e.target.textContent || '')
+                    }
+                  }}
                   onClick={(e) => {
                     if (!tile.completed) {
                       e.target.focus()
                     }
                   }}
                   onFocus={(e) => {
-                    if (!tile.completed) {
-                      e.target.select()
-                    } else {
+                    if (tile.completed) {
                       e.target.blur()
                     }
                   }}
@@ -92,13 +94,30 @@ function Bingo() {
                     e.stopPropagation()
                     handleTileClick(rowIndex, colIndex)
                   }}
-                  className={`relative z-10 w-full h-full bg-transparent text-white text-center text-sm md:text-base font-semibold border-none outline-none resize-none ${
+                  className={`relative z-10 w-full h-full bg-transparent text-white text-center text-xs md:text-sm font-semibold border-none outline-none ${
                     tile.completed 
                       ? 'line-through opacity-50 cursor-default' 
                       : 'cursor-text'
                   }`}
-                  placeholder="..."
-                />
+                  style={{
+                    overflow: 'auto',
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '4px',
+                    width: '100%',
+                    height: '100%',
+                    whiteSpace: 'normal',
+                    hyphens: 'auto',
+                    maxHeight: '100%',
+                    maxWidth: '100%'
+                  }}
+                  data-placeholder={tile.content ? '' : '...'}
+                >
+                  {tile.content}
+                </div>
               </div>
             ))
           )}

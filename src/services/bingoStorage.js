@@ -3,7 +3,17 @@ import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } from '@a
 
 // Check if AWS is configured
 const isAWSConfigured = () => {
-  return !!(import.meta.env.VITE_AWS_ACCESS_KEY_ID && import.meta.env.VITE_AWS_SECRET_ACCESS_KEY)
+  const hasAccessKey = !!import.meta.env.VITE_AWS_ACCESS_KEY_ID
+  const hasSecretKey = !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY
+  const configured = hasAccessKey && hasSecretKey
+  
+  if (!configured) {
+    console.warn('AWS not configured - missing credentials')
+  } else {
+    console.log('AWS configured - using DynamoDB')
+  }
+  
+  return configured
 }
 
 // Initialize AWS client (only if credentials are provided)
@@ -11,14 +21,19 @@ let client = null
 let docClient = null
 
 if (isAWSConfigured()) {
-  client = new DynamoDBClient({
-    region: import.meta.env.VITE_AWS_REGION || 'us-east-1',
-    credentials: {
-      accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
-      secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
-    },
-  })
-  docClient = DynamoDBDocumentClient.from(client)
+  try {
+    client = new DynamoDBClient({
+      region: import.meta.env.VITE_AWS_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
+        secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
+      },
+    })
+    docClient = DynamoDBDocumentClient.from(client)
+    console.log('AWS DynamoDB client initialized')
+  } catch (error) {
+    console.error('Failed to initialize AWS client:', error)
+  }
 }
 
 const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || 'bingo-cards'
@@ -28,7 +43,7 @@ const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || 'bingo-c
  * Save bingo card state (content and status)
  */
 export async function saveBingoCard(cardId, tiles) {
-  if (!isAWSConfigured()) {
+  if (!isAWSConfigured() || !docClient) {
     console.warn('AWS not configured - saving to localStorage as fallback')
     try {
       localStorage.setItem(`bingo-card-${cardId}`, JSON.stringify({
@@ -48,6 +63,7 @@ export async function saveBingoCard(cardId, tiles) {
       updatedAt: new Date().toISOString(),
     }
 
+    console.log('Saving to DynamoDB:', { cardId, table: BINGO_CARD_TABLE })
     await docClient.send(
       new PutCommand({
         TableName: BINGO_CARD_TABLE,
@@ -55,10 +71,21 @@ export async function saveBingoCard(cardId, tiles) {
       })
     )
 
+    console.log('Successfully saved to DynamoDB')
     return { success: true }
   } catch (error) {
-    console.error('Error saving bingo card:', error)
-    return { success: false, error: error.message }
+    console.error('Error saving bingo card to DynamoDB:', error)
+    // Fallback to localStorage on error
+    try {
+      localStorage.setItem(`bingo-card-${cardId}`, JSON.stringify({
+        tiles,
+        updatedAt: new Date().toISOString(),
+      }))
+      console.warn('Fell back to localStorage due to DynamoDB error')
+      return { success: true }
+    } catch (localError) {
+      return { success: false, error: error.message }
+    }
   }
 }
 
@@ -66,7 +93,7 @@ export async function saveBingoCard(cardId, tiles) {
  * Load bingo card state
  */
 export async function loadBingoCard(cardId) {
-  if (!isAWSConfigured()) {
+  if (!isAWSConfigured() || !docClient) {
     console.warn('AWS not configured - loading from localStorage as fallback')
     try {
       const stored = localStorage.getItem(`bingo-card-${cardId}`)
@@ -85,6 +112,7 @@ export async function loadBingoCard(cardId) {
   }
 
   try {
+    console.log('Loading from DynamoDB:', { cardId, table: BINGO_CARD_TABLE })
     const result = await docClient.send(
       new GetCommand({
         TableName: BINGO_CARD_TABLE,
@@ -93,6 +121,7 @@ export async function loadBingoCard(cardId) {
     )
 
     if (result.Item) {
+      console.log('Successfully loaded from DynamoDB')
       return {
         success: true,
         tiles: JSON.parse(result.Item.tiles),
@@ -100,10 +129,26 @@ export async function loadBingoCard(cardId) {
       }
     }
 
+    console.log('No data found in DynamoDB for cardId:', cardId)
     return { success: true, tiles: null }
   } catch (error) {
-    console.error('Error loading bingo card:', error)
-    return { success: false, error: error.message }
+    console.error('Error loading bingo card from DynamoDB:', error)
+    // Fallback to localStorage on error
+    try {
+      const stored = localStorage.getItem(`bingo-card-${cardId}`)
+      if (stored) {
+        const data = JSON.parse(stored)
+        console.warn('Fell back to localStorage due to DynamoDB error')
+        return {
+          success: true,
+          tiles: data.tiles,
+          updatedAt: data.updatedAt,
+        }
+      }
+      return { success: true, tiles: null }
+    } catch (localError) {
+      return { success: false, error: error.message }
+    }
   }
 }
 

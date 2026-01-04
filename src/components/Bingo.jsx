@@ -367,7 +367,6 @@ function Bingo() {
 
   return (
     <div className="min-h-screen bg-[#0a0e13] flex flex-col items-center py-8 px-4 relative">
-      <UserIndicator />
       {/* Back to Home button - top left */}
       <Link
         to="/"

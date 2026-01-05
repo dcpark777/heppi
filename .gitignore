@@ -50,6 +50,10 @@ Thumbs.db
 # Scripts
 scripts/
 
+# Backups
+backups/
+*.tar.gz
+
 # Cursor documentation
 cursor_documentation/
 

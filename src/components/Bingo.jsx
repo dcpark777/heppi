@@ -52,8 +52,9 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
         alert('Please select only image files')
         return
       }
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Each image must be less than 5MB')
+      // Increased limit to 50MB since images are stored in S3, not DynamoDB
+      if (file.size > 50 * 1024 * 1024) {
+        alert('Each image must be less than 50MB')
         return
       }
     }

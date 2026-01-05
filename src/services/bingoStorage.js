@@ -61,7 +61,7 @@ function getTileId(row, col) {
  * Save a single bingo tile independently
  * @param {string|string[]} imageUrls - S3 URL(s) or array of S3 URLs (for localStorage fallback, base64 not supported)
  */
-export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null, imageUrls = null) {
+export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null, imageUrls = null, previewImageIndex = 0) {
   const tileId = getTileId(row, col)
   const updatedBy = username || getCurrentUsername()
 
@@ -77,6 +77,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         content,
         completed,
         images: imagesArray,
+        previewImageIndex: previewImageIndex,
         updatedAt: new Date().toISOString(),
         updatedBy,
       }))
@@ -100,6 +101,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
       updatedBy,
       // Store array of S3 URLs (not base64 - that goes to S3)
       images: imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]).filter(Boolean) : [],
+      previewImageIndex: previewImageIndex,
     }
     
     await docClient.send(
@@ -168,10 +170,11 @@ export async function loadBingoCard(cardId) {
               completed: data.completed || false,
               completedAt: data.completedAt || null,
               updatedBy: data.updatedBy || null,
-              images: imagesArray
+              images: imagesArray,
+              previewImageIndex: data.previewImageIndex !== undefined ? data.previewImageIndex : 0
             }
           } else {
-            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [] }
+            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [], previewImageIndex: 0 }
           }
         }
       }
@@ -220,7 +223,8 @@ export async function loadBingoCard(cardId) {
             completed: item.completed === true || item.completed === 'true',
             completedAt: item.completedAt || null,
             updatedBy: item.updatedBy || null,
-            images: imagesArray
+            images: imagesArray,
+            previewImageIndex: item.previewImageIndex !== undefined ? item.previewImageIndex : 0
           }
         }
       })
@@ -262,10 +266,11 @@ export async function loadBingoCard(cardId) {
                 completed: data.completed || false,
                 completedAt: data.completedAt || null,
                 updatedBy: data.updatedBy || null,
-                images: imagesArray
+                images: imagesArray,
+                previewImageIndex: data.previewImageIndex !== undefined ? data.previewImageIndex : 0
               }
             } else {
-              tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [] }
+              tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [], previewImageIndex: 0 }
             }
           }
         }

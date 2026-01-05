@@ -14,6 +14,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   const [content, setContent] = useState('')
   const [completed, setCompleted] = useState(false)
   const [images, setImages] = useState([]) // Array of {url, preview} objects
+  const [previewImageIndex, setPreviewImageIndex] = useState(0) // Index of image to use as preview
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -25,12 +26,25 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
       const imageData = tile.imageData || tile.images || null
       if (imageData) {
         const imageArray = Array.isArray(imageData) ? imageData : [imageData]
-        setImages(imageArray.filter(Boolean).map(url => ({ 
+        const filteredImages = imageArray.filter(Boolean)
+        
+        // Images are already stored with preview at index 0, so we can use them as-is
+        // But we need to check if there's a stored previewImageIndex for backward compatibility
+        const previewIndex = tile.previewImageIndex !== undefined ? tile.previewImageIndex : 0
+        
+        let orderedImages = filteredImages.map(url => ({ 
           url, 
           preview: getImageUrl(url) // Convert S3 URI/key to HTTPS URL for preview
-        })))
+        }))
+        
+        // If previewIndex is not 0, it means the data hasn't been saved with new format yet
+        // In that case, we should show the correct preview but keep the original order
+        // The preview will be reordered on save
+        setImages(orderedImages)
+        setPreviewImageIndex(previewIndex)
       } else {
         setImages([])
+        setPreviewImageIndex(0)
       }
       // Focus input after modal opens
       setTimeout(() => {
@@ -82,13 +96,37 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   }
 
   const handleRemoveImage = (indexToRemove) => {
-    setImages(prev => prev.filter((_, index) => index !== indexToRemove))
+    setImages(prev => {
+      const newImages = prev.filter((_, index) => index !== indexToRemove)
+      // Adjust preview index if needed
+      if (indexToRemove === previewImageIndex) {
+        // Removed the preview image, set to first image
+        setPreviewImageIndex(newImages.length > 0 ? 0 : 0)
+      } else if (indexToRemove < previewImageIndex) {
+        // Removed an image before the preview, adjust index
+        setPreviewImageIndex(previewImageIndex - 1)
+      }
+      return newImages
+    })
+  }
+
+  const handleSetPreviewImage = (index) => {
+    // Just mark which image should be preview (don't reorder until save)
+    setPreviewImageIndex(index)
   }
 
   const handleSave = () => {
     // Extract URLs from images array (for new uploads, these will be base64; for existing, they'll be S3 URLs)
-    const imageUrls = images.map(img => img.url)
-    onSave(content, completed, imageUrls)
+    let imageUrls = images.map(img => img.url)
+    
+    // Reorder images: move preview image to first position only when saving
+    if (previewImageIndex > 0 && previewImageIndex < imageUrls.length) {
+      const previewUrl = imageUrls[previewImageIndex]
+      imageUrls.splice(previewImageIndex, 1)
+      imageUrls.unshift(previewUrl)
+    }
+    
+    onSave(content, completed, imageUrls, 0) // Always 0 since preview is moved to first position on save
   }
 
   const handleKeyDown = (e) => {
@@ -142,8 +180,29 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
                   <img 
                     src={image.preview} 
                     alt={`Preview ${index + 1}`} 
-                    className="w-full h-32 object-cover rounded-lg border-2 border-gray-600"
+                    className={`w-full h-32 object-cover rounded-lg border-2 touch-manipulation ${
+                      previewImageIndex === index 
+                        ? 'border-blue-500 border-4' 
+                        : 'border-gray-600'
+                    }`}
                   />
+                  {/* Set as preview button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSetPreviewImage(index)}
+                    className={`absolute top-1 left-1 rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold touch-manipulation ${
+                      previewImageIndex === index
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                    style={{
+                      WebkitTapHighlightColor: 'transparent'
+                    }}
+                    title={previewImageIndex === index ? 'Preview image' : 'Set as preview'}
+                  >
+                    {previewImageIndex === index ? '★' : '☆'}
+                  </button>
+                  {/* Remove button */}
                   <button
                     type="button"
                     onClick={() => handleRemoveImage(index)}
@@ -247,7 +306,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
 }
 
 // Component to display tile content
-function TileContent({ content, completed, images }) {
+function TileContent({ content, completed, images, previewImageIndex = 0 }) {
   const divRef = useRef(null)
   
   // Support both old single image format and new array format
@@ -261,41 +320,46 @@ function TileContent({ content, completed, images }) {
     }
   }, [content, imageArray])
 
-  if (imageArray.length > 0) {
+  // Get the preview image (only show one image)
+  const previewImage = imageArray.length > 0 
+    ? imageArray[previewImageIndex >= 0 && previewImageIndex < imageArray.length 
+        ? previewImageIndex 
+        : 0]
+    : null
+
+  if (previewImage) {
     return (
       <div
         className={`relative z-10 w-full h-full bg-transparent border-none outline-none ${
           completed ? 'opacity-50' : ''
         }`}
         style={{
-          display: 'grid',
-          gridTemplateColumns: imageArray.length === 1 ? '1fr' : '1fr 1fr',
-          gridTemplateRows: imageArray.length <= 2 ? '1fr' : '1fr 1fr',
-          gap: '2px',
-          padding: '2px',
           width: '100%',
           height: '100%',
           overflow: 'hidden'
         }}
       >
-        {imageArray.map((imageUrl, index) => (
-          <img 
-            key={index}
-            src={getImageUrl(imageUrl)} 
-            alt={`${content || 'Tile'} image ${index + 1}`} 
-            className="w-full h-full object-cover rounded"
-            style={{
-              maxWidth: '100%',
-              maxHeight: '100%'
-            }}
-          />
-        ))}
+        <img 
+          src={getImageUrl(previewImage)} 
+          alt={`${content || 'Tile'} preview`} 
+          className="w-full h-full object-cover rounded"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '100%'
+          }}
+        />
         {content && (
           <div
-            className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-center p-1"
+            className="absolute bottom-0 left-0 right-0 text-white text-center font-semibold"
             style={{
-              fontSize: 'clamp(0.3rem, 1vw, 0.5rem)',
-              lineHeight: '1.1'
+              background: 'linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.7) 60%, transparent 100%)',
+              padding: '0.5rem 0.25rem',
+              fontSize: 'clamp(0.4rem, 1.2vw, 0.6rem)',
+              lineHeight: '1.2',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
+              textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)'
             }}
           >
             {content}
@@ -312,14 +376,14 @@ function TileContent({ content, completed, images }) {
         completed ? 'opacity-50' : ''
       }`}
       style={{
-        fontSize: 'clamp(0.4rem, 1.5vw, 0.65rem)',
+        fontSize: 'clamp(0.4rem, 1.2vw, 0.6rem)',
         overflow: 'auto',
         wordWrap: 'break-word',
         overflowWrap: 'break-word',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '4px',
+        padding: '0.5rem 0.25rem',
         width: '100%',
         height: '100%',
         whiteSpace: 'normal',
@@ -327,7 +391,8 @@ function TileContent({ content, completed, images }) {
         maxHeight: '100%',
         maxWidth: '100%',
         lineHeight: '1.2',
-        WebkitTapHighlightColor: 'transparent'
+        WebkitTapHighlightColor: 'transparent',
+        textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)'
       }}
     />
   )
@@ -350,7 +415,8 @@ function Bingo() {
         completed: false,
         completedAt: null,
         updatedBy: null,
-        images: [] // Array of image URLs
+        images: [], // Array of image URLs
+        previewImageIndex: 0 // Index of image to show as preview
       }))
     )
   })
@@ -409,7 +475,8 @@ function Bingo() {
                 const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
                 return {
                   ...tile,
-                  images: imagesArray
+                  images: imagesArray,
+                  previewImageIndex: tile.previewImageIndex !== undefined ? tile.previewImageIndex : 0
                 }
               })
             )
@@ -482,11 +549,12 @@ function Bingo() {
       completed: tile.completed,
       completedAt: tile.completedAt || null,
       updatedBy: tile.updatedBy || null,
-      images: imageData
+      images: imageData,
+      previewImageIndex: tile.previewImageIndex !== undefined ? tile.previewImageIndex : 0
     })
   }
 
-  const handleModalSave = async (newContent, newCompleted, newImageUrls) => {
+  const handleModalSave = async (newContent, newCompleted, newImageUrls, previewImageIndex = 0) => {
     if (!modalTile) return
     
     const { row, col } = modalTile
@@ -562,13 +630,14 @@ function Bingo() {
           completed: newCompleted,
           completedAt: newCompletedAt,
           updatedBy: username, // Track who made the update
-          images: finalImageUrls
+          images: finalImageUrls,
+          previewImageIndex: previewImageIndex
         }
         return newTiles
       })
       
       // Save to DynamoDB - use the calculated completedAt and image URLs array
-      await saveTile(row, col, newContent, newCompleted, newCompletedAt, finalImageUrls)
+      await saveTile(row, col, newContent, newCompleted, newCompletedAt, finalImageUrls, previewImageIndex)
       setModalTile(null)
     } catch (error) {
       console.error('Error saving tile:', error)
@@ -665,6 +734,7 @@ function Bingo() {
                     content={tile.content}
                     completed={tile.completed}
                     images={tile.images || (tile.imageData ? [tile.imageData] : [])}
+                    previewImageIndex={tile.previewImageIndex !== undefined ? tile.previewImageIndex : 0}
                   />
                 </div>
               )

@@ -6,15 +6,14 @@ import {
   recordStatusChange,
   recordContentChange
 } from '../services/bingoStorage'
-import { uploadTileImage, deleteTileImage, getImageUrl } from '../services/s3Storage'
+import { uploadTileImage, deleteTileImage, deleteTileImageByUrl, getImageUrl } from '../services/s3Storage'
 import UserIndicator from './UserIndicator'
 
 // Modal component for editing tile content
 function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   const [content, setContent] = useState('')
   const [completed, setCompleted] = useState(false)
-  const [imageData, setImageData] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
+  const [images, setImages] = useState([]) // Array of {url, preview} objects
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -22,8 +21,14 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
     if (isOpen && tile) {
       setContent(tile.content || '')
       setCompleted(tile.completed || false)
-      setImageData(tile.imageData || null)
-      setImagePreview(tile.imageData || null)
+      // Convert imageData to array format (support both old single image and new array format)
+      const imageData = tile.imageData || tile.images || null
+      if (imageData) {
+        const imageArray = Array.isArray(imageData) ? imageData : [imageData]
+        setImages(imageArray.filter(Boolean).map(url => ({ url, preview: url })))
+      } else {
+        setImages([])
+      }
       // Focus input after modal opens
       setTimeout(() => {
         inputRef.current?.focus()
@@ -35,43 +40,51 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   if (!isOpen || !tile) return null
 
   const handleImageChange = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
-      return
+    // Validate all files
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        alert('Please select only image files')
+        return
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Each image must be less than 5MB')
+        return
+      }
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image size must be less than 5MB')
-      return
-    }
+    // Read all files
+    const readers = files.map(file => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve({ url: reader.result, preview: reader.result })
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+    })
 
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const base64String = reader.result
-      setImageData(base64String)
-      setImagePreview(base64String)
-    }
-    reader.onerror = () => {
-      alert('Failed to read image file')
-    }
-    reader.readAsDataURL(file)
+    Promise.all(readers)
+      .then(newImages => {
+        setImages(prev => [...prev, ...newImages])
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
+      })
+      .catch(() => {
+        alert('Failed to read one or more image files')
+      })
   }
 
-  const handleRemoveImage = () => {
-    setImageData(null)
-    setImagePreview(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+  const handleRemoveImage = (indexToRemove) => {
+    setImages(prev => prev.filter((_, index) => index !== indexToRemove))
   }
 
   const handleSave = () => {
-    onSave(content, completed, imageData)
+    // Extract URLs from images array (for new uploads, these will be base64; for existing, they'll be S3 URLs)
+    const imageUrls = images.map(img => img.url)
+    onSave(content, completed, imageUrls)
   }
 
   const handleKeyDown = (e) => {
@@ -116,25 +129,29 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
         
         {/* Image Upload Section */}
         <div className="mb-4">
-          <label className="block text-white font-medium text-sm mb-2">Image (Optional)</label>
+          <label className="block text-white font-medium text-sm mb-2">Images (Optional)</label>
           
-          {imagePreview && (
-            <div className="mb-3 relative">
-              <img 
-                src={imagePreview} 
-                alt="Preview" 
-                className="w-full max-h-48 object-contain rounded-lg border-2 border-gray-600"
-              />
-              <button
-                type="button"
-                onClick={handleRemoveImage}
-                className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold touch-manipulation"
-                style={{
-                  WebkitTapHighlightColor: 'transparent'
-                }}
-              >
-                ×
-              </button>
+          {images.length > 0 && (
+            <div className="mb-3 grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+              {images.map((image, index) => (
+                <div key={index} className="relative">
+                  <img 
+                    src={image.preview} 
+                    alt={`Preview ${index + 1}`} 
+                    className="w-full h-32 object-cover rounded-lg border-2 border-gray-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(index)}
+                    className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold touch-manipulation"
+                    style={{
+                      WebkitTapHighlightColor: 'transparent'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           
@@ -142,6 +159,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleImageChange}
             className="hidden"
             id="image-upload"
@@ -153,7 +171,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
               WebkitTapHighlightColor: 'transparent'
             }}
           >
-            {imagePreview ? 'Change Image' : 'Upload Image'}
+            {images.length > 0 ? 'Add More Images' : 'Upload Images'}
           </label>
         </div>
         
@@ -225,40 +243,49 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
 }
 
 // Component to display tile content
-function TileContent({ content, completed, imageData }) {
+function TileContent({ content, completed, images }) {
   const divRef = useRef(null)
+  
+  // Support both old single image format and new array format
+  const imageArray = images 
+    ? (Array.isArray(images) ? images : [images]).filter(Boolean)
+    : []
 
   useEffect(() => {
-    if (divRef.current && !imageData) {
+    if (divRef.current && imageArray.length === 0) {
       divRef.current.textContent = content || ''
     }
-  }, [content, imageData])
+  }, [content, imageArray])
 
-  if (imageData) {
+  if (imageArray.length > 0) {
     return (
       <div
         className={`relative z-10 w-full h-full bg-transparent border-none outline-none ${
           completed ? 'opacity-50' : ''
         }`}
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          display: 'grid',
+          gridTemplateColumns: imageArray.length === 1 ? '1fr' : '1fr 1fr',
+          gridTemplateRows: imageArray.length <= 2 ? '1fr' : '1fr 1fr',
+          gap: '2px',
           padding: '2px',
           width: '100%',
           height: '100%',
           overflow: 'hidden'
         }}
       >
-        <img 
-          src={imageData} 
-          alt={content || 'Tile image'} 
-          className="w-full h-full object-cover rounded"
-          style={{
-            maxWidth: '100%',
-            maxHeight: '100%'
-          }}
-        />
+        {imageArray.map((imageUrl, index) => (
+          <img 
+            key={index}
+            src={getImageUrl(imageUrl)} 
+            alt={`${content || 'Tile'} image ${index + 1}`} 
+            className="w-full h-full object-cover rounded"
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%'
+            }}
+          />
+        ))}
         {content && (
           <div
             className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-center p-1"
@@ -319,7 +346,7 @@ function Bingo() {
         completed: false,
         completedAt: null,
         updatedBy: null,
-        imageData: null
+        images: [] // Array of image URLs
       }))
     )
   })
@@ -342,7 +369,8 @@ function Bingo() {
       // Only save if we've finished loading and there might be unsaved changes in modal
       if (!isInitialLoadRef.current && modalTile) {
         const username = getCurrentUsername()
-        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt, username, modalTile.imageData || null).catch(err => 
+        const images = modalTile.images || []
+        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt, username, images).catch(err => 
           console.error(`Failed to save tile on unload:`, err)
         )
       }
@@ -370,12 +398,16 @@ function Bingo() {
           )
           
           if (isValid) {
-            // Ensure all tiles have imageData field
+            // Ensure all tiles have images array (support both old and new format)
             const normalizedTiles = loadedTiles.map(row => 
-              row.map(tile => ({
-                ...tile,
-                imageData: tile.imageData || null
-              }))
+              row.map(tile => {
+                const imageData = tile.images || tile.imageData || null
+                const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
+                return {
+                  ...tile,
+                  images: imagesArray
+                }
+              })
             )
             setTiles(normalizedTiles)
           } else {
@@ -398,14 +430,14 @@ function Bingo() {
   }
 
   // Save a single tile - only saves when Save button is clicked
-  const saveTile = useCallback(async (row, col, content, completed, completedAt = null, imageUrl = null) => {
+  const saveTile = useCallback(async (row, col, content, completed, completedAt = null, imageUrls = null) => {
     if (isInitialLoadRef.current) {
       return
     }
 
     try {
       const username = getCurrentUsername()
-      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt, username, imageUrl)
+      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt, username, imageUrls)
       if (!result.success) {
         setSaveError('Failed to save - check console for details')
         console.error('Save failed:', result)
@@ -418,10 +450,11 @@ function Bingo() {
         setTiles(prev => {
           const newTiles = [...prev]
           newTiles[row] = [...newTiles[row]]
+          const imagesArray = imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]).filter(Boolean) : []
           newTiles[row][col] = {
             ...newTiles[row][col],
             content: content,
-            imageData: imageUrl
+            images: imagesArray
           }
           return newTiles
         })
@@ -436,6 +469,8 @@ function Bingo() {
   const handleTileClick = (row, col) => {
     // Open modal directly when tile is clicked
     const tile = tiles[row][col]
+    // Support both old single image format and new array format
+    const imageData = tile.images || (tile.imageData ? [tile.imageData] : [])
     setModalTile({
       row,
       col,
@@ -443,46 +478,54 @@ function Bingo() {
       completed: tile.completed,
       completedAt: tile.completedAt || null,
       updatedBy: tile.updatedBy || null,
-      imageData: tile.imageData || null
+      images: imageData
     })
   }
 
-  const handleModalSave = async (newContent, newCompleted, newImageData) => {
+  const handleModalSave = async (newContent, newCompleted, newImageUrls) => {
     if (!modalTile) return
     
     const { row, col } = modalTile
     const oldContent = tiles[row][col].content
     const oldCompleted = tiles[row][col].completed
     const oldCompletedAt = tiles[row][col].completedAt
-    const oldImageData = tiles[row][col].imageData
+    const oldImages = tiles[row][col].images || (tiles[row][col].imageData ? [tiles[row][col].imageData] : [])
     const username = getCurrentUsername()
     
     setSaving(true)
     setSaveError(null)
     
     try {
-      let finalImageUrl = null
+      const newImageUrlsArray = Array.isArray(newImageUrls) ? newImageUrls : (newImageUrls ? [newImageUrls] : [])
+      const finalImageUrls = []
       
-      // Handle image upload/removal
-      if (newImageData && newImageData !== oldImageData) {
-        // New image uploaded - upload to S3
-        const uploadResult = await uploadTileImage(CARD_ID, row, col, newImageData)
-        if (uploadResult.success) {
-          finalImageUrl = uploadResult.imageUrl
-        } else {
-          setSaveError('Failed to upload image - ' + (uploadResult.error || 'Unknown error'))
-          setSaving(false)
-          return
+      // Process each image
+      for (let i = 0; i < newImageUrlsArray.length; i++) {
+        const imageUrl = newImageUrlsArray[i]
+        
+        // If it's a base64 data URL, upload to S3
+        if (imageUrl && imageUrl.startsWith('data:')) {
+          const uploadResult = await uploadTileImage(CARD_ID, row, col, imageUrl)
+          if (uploadResult.success) {
+            finalImageUrls.push(uploadResult.imageUrl)
+          } else {
+            setSaveError('Failed to upload image ' + (i + 1) + ' - ' + (uploadResult.error || 'Unknown error'))
+            setSaving(false)
+            return
+          }
+        } else if (imageUrl) {
+          // It's already an S3 URL, keep it
+          finalImageUrls.push(imageUrl)
         }
-      } else if (!newImageData && oldImageData) {
-        // Image was removed - delete from S3 if it's an S3 URL
-        if (oldImageData.startsWith('http://') || oldImageData.startsWith('https://')) {
-          await deleteTileImage(CARD_ID, row, col)
+      }
+      
+      // Delete images that were removed (compare old vs new)
+      const imagesToDelete = oldImages.filter(oldUrl => !finalImageUrls.includes(oldUrl))
+      for (const imageUrl of imagesToDelete) {
+        if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+          // Extract index from S3 key or delete by URL
+          await deleteTileImageByUrl(CARD_ID, imageUrl)
         }
-        finalImageUrl = null
-      } else if (oldImageData) {
-        // Keep existing image
-        finalImageUrl = oldImageData
       }
       
       // Calculate completedAt: set when marking as completed, preserve if already completed, clear when uncompleted
@@ -515,13 +558,13 @@ function Bingo() {
           completed: newCompleted,
           completedAt: newCompletedAt,
           updatedBy: username, // Track who made the update
-          imageData: finalImageUrl
+          images: finalImageUrls
         }
         return newTiles
       })
       
-      // Save to DynamoDB - use the calculated completedAt and S3 URL
-      await saveTile(row, col, newContent, newCompleted, newCompletedAt, finalImageUrl)
+      // Save to DynamoDB - use the calculated completedAt and image URLs array
+      await saveTile(row, col, newContent, newCompleted, newCompletedAt, finalImageUrls)
       setModalTile(null)
     } catch (error) {
       console.error('Error saving tile:', error)
@@ -617,7 +660,7 @@ function Bingo() {
                   <TileContent
                     content={tile.content}
                     completed={tile.completed}
-                    imageData={tile.imageData ? getImageUrl(tile.imageData) : null}
+                    images={tile.images || (tile.imageData ? [tile.imageData] : [])}
                   />
                 </div>
               )

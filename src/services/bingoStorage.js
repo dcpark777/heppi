@@ -59,9 +59,9 @@ function getTileId(row, col) {
 
 /**
  * Save a single bingo tile independently
- * @param {string} imageUrl - S3 URL or base64 data URL (for localStorage fallback)
+ * @param {string|string[]} imageUrls - S3 URL(s) or array of S3 URLs (for localStorage fallback, base64 not supported)
  */
-export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null, imageUrl = null) {
+export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null, imageUrls = null) {
   const tileId = getTileId(row, col)
   const updatedBy = username || getCurrentUsername()
 
@@ -70,12 +70,13 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
     try {
       // Save individual tile to localStorage
       const key = `bingo-tile-${tileId}`
+      const imagesArray = imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]) : []
       localStorage.setItem(key, JSON.stringify({
         row,
         col,
         content,
         completed,
-        imageData: imageUrl || null,
+        images: imagesArray,
         updatedAt: new Date().toISOString(),
         updatedBy,
       }))
@@ -97,8 +98,8 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
       updatedAt: now,
       completedAt: completedAt || (completed ? now : null),
       updatedBy,
-      // Store S3 URL or null (not base64 - that goes to S3)
-      imageData: imageUrl || null,
+      // Store array of S3 URLs (not base64 - that goes to S3)
+      images: imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]).filter(Boolean) : [],
     }
     
     await docClient.send(
@@ -123,12 +124,13 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
     // Fallback to localStorage on error
     try {
       const key = `bingo-tile-${tileId}`
+      const imagesArray = imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]) : []
       localStorage.setItem(key, JSON.stringify({
         row,
         col,
         content,
         completed,
-        imageData: imageUrl || null,
+        images: imagesArray,
         updatedAt: new Date().toISOString(),
         updatedBy,
       }))
@@ -158,15 +160,18 @@ export async function loadBingoCard(cardId) {
           const stored = localStorage.getItem(key)
           if (stored) {
             const data = JSON.parse(stored)
+            // Support both old single image format and new array format
+            const imageData = data.images || data.imageData || null
+            const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
             tiles[row][col] = {
               content: data.content || '',
               completed: data.completed || false,
               completedAt: data.completedAt || null,
               updatedBy: data.updatedBy || null,
-              imageData: data.imageData || null
+              images: imagesArray
             }
           } else {
-            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, imageData: null }
+            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [] }
           }
         }
       }
@@ -196,7 +201,7 @@ export async function loadBingoCard(cardId) {
         completed: false,
         completedAt: null,
         updatedBy: null,
-        imageData: null
+        images: []
       }))
     )
 
@@ -207,12 +212,15 @@ export async function loadBingoCard(cardId) {
         const col = typeof item.col === 'number' ? item.col : parseInt(item.col, 10)
         
         if (!isNaN(row) && !isNaN(col) && row >= 0 && row < 5 && col >= 0 && col < 5) {
+          // Support both old single image format and new array format
+          const imageData = item.images || item.imageData || null
+          const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
           tiles[row][col] = {
             content: item.content || '',
             completed: item.completed === true || item.completed === 'true',
             completedAt: item.completedAt || null,
             updatedBy: item.updatedBy || null,
-            imageData: item.imageData || null
+            images: imagesArray
           }
         }
       })
@@ -246,15 +254,18 @@ export async function loadBingoCard(cardId) {
             const stored = localStorage.getItem(key)
             if (stored) {
               const data = JSON.parse(stored)
+              // Support both old single image format and new array format
+              const imageData = data.images || data.imageData || null
+              const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
               tiles[row][col] = {
                 content: data.content || '',
                 completed: data.completed || false,
                 completedAt: data.completedAt || null,
                 updatedBy: data.updatedBy || null,
-                imageData: data.imageData || null
+                images: imagesArray
               }
             } else {
-              tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, imageData: null }
+              tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [] }
             }
           }
         }

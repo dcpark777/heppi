@@ -50,10 +50,13 @@ function base64ToUint8Array(base64String) {
 
 /**
  * Generate S3 key for a tile image
- * Format: bingo/{cardId}/{row}-{col}.{ext}
+ * Format: bingo/{cardId}/{row}-{col}-{timestamp}.{ext}
+ * Uses timestamp for uniqueness to avoid collisions
  */
 function getImageKey(cardId, row, col, extension = 'jpg') {
-  return `bingo/${cardId}/${row}-${col}.${extension}`
+  const timestamp = Date.now()
+  const random = Math.random().toString(36).substring(2, 9) // Add random string for extra uniqueness
+  return `bingo/${cardId}/${row}-${col}-${timestamp}-${random}.${extension}`
 }
 
 /**
@@ -79,44 +82,29 @@ export async function uploadTileImage(cardId, row, col, base64Image) {
     // Extract content type and extension from base64 string
     const match = base64Image.match(/^data:image\/(\w+);base64,/)
     const contentType = match ? `image/${match[1]}` : 'image/jpeg'
-    const extension = match ? match[1] : 'jpg'
+    // Normalize extension (jpeg -> jpg for consistency)
+    let extension = match ? match[1] : 'jpg'
+    if (extension === 'jpeg') {
+      extension = 'jpg'
+    }
     
     // Convert base64 to Uint8Array (required by AWS SDK v3 in browser)
     const uint8Array = base64ToUint8Array(base64Image)
-    console.log('Converted image to Uint8Array, size:', uint8Array.length, 'bytes')
     
-    // Generate S3 key
+    // Generate S3 key with unique identifier (timestamp + random)
     const key = getImageKey(cardId, row, col, extension)
-    console.log('Uploading to S3:', { bucket: BUCKET_NAME, key, contentType })
     
     // Upload to S3
-    // Try with ACL first, fallback without ACL if bucket policy handles public access
-    let command = new PutObjectCommand({
+    // Skip ACL since bucket has ObjectOwnership: BucketOwnerEnforced
+    // The bucket policy handles public access
+    const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
       Body: uint8Array,
       ContentType: contentType,
-      ACL: 'public-read',
     })
     
-    try {
-      await s3Client.send(command)
-    } catch (aclError) {
-      // If ACL fails (bucket might have ACLs disabled), try without ACL
-      // The bucket policy should handle public access
-      if (aclError.name === 'AccessControlListNotSupported' || aclError.message?.includes('ACL')) {
-        console.warn('ACL not supported, using bucket policy for public access')
-        command = new PutObjectCommand({
-          Bucket: BUCKET_NAME,
-          Key: key,
-          Body: uint8Array,
-          ContentType: contentType,
-        })
-        await s3Client.send(command)
-      } else {
-        throw aclError
-      }
-    }
+    await s3Client.send(command)
     
     // Construct public URL
     const imageUrl = `https://${BUCKET_NAME}.s3.${import.meta.env.VITE_AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`
@@ -124,14 +112,6 @@ export async function uploadTileImage(cardId, row, col, base64Image) {
     return { success: true, imageUrl }
   } catch (error) {
     console.error('Error uploading image to S3:', error)
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-      stack: error.stack,
-      bucket: BUCKET_NAME,
-      region: import.meta.env.VITE_AWS_REGION || 'us-east-1'
-    })
     
     // Don't fallback to base64 - fail the upload so we don't exceed DynamoDB limits
     return { success: false, error: error.message || error.name || 'Unknown error' }
@@ -139,7 +119,48 @@ export async function uploadTileImage(cardId, row, col, base64Image) {
 }
 
 /**
- * Delete image from S3
+ * Delete image from S3 by URL
+ * @param {string} cardId - The bingo card ID
+ * @param {string} imageUrl - Full S3 URL of the image to delete
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteTileImageByUrl(cardId, imageUrl) {
+  if (!isAWSConfigured() || !s3Client) {
+    return { success: true, fallback: true }
+  }
+
+  if (!imageUrl || (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
+    return { success: true }
+  }
+
+  try {
+    // Extract key from S3 URL
+    // Format: https://bucket.s3.region.amazonaws.com/bingo/cardId/row-col-timestamp.ext
+    const urlObj = new URL(imageUrl)
+    const key = urlObj.pathname.substring(1) // Remove leading slash
+    if (!key || !key.startsWith('bingo/')) {
+      console.warn('Could not extract S3 key from URL:', imageUrl)
+      return { success: false, error: 'Invalid S3 URL format' }
+    }
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    })
+    
+    await s3Client.send(command)
+    return { success: true }
+  } catch (error) {
+    // Ignore if file doesn't exist
+    if (error.name === 'NoSuchKey') {
+      return { success: true }
+    }
+    console.error('Error deleting image from S3:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Delete image from S3 (legacy - for single image support)
  * @param {string} cardId - The bingo card ID
  * @param {number} row - Row index
  * @param {number} col - Column index

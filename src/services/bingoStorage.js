@@ -59,8 +59,9 @@ function getTileId(row, col) {
 
 /**
  * Save a single bingo tile independently
+ * @param {string} imageUrl - S3 URL or base64 data URL (for localStorage fallback)
  */
-export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null) {
+export async function saveBingoTile(cardId, row, col, content, completed, completedAt = null, username = null, imageUrl = null) {
   const tileId = getTileId(row, col)
   const updatedBy = username || getCurrentUsername()
 
@@ -74,6 +75,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         col,
         content,
         completed,
+        imageData: imageUrl || null,
         updatedAt: new Date().toISOString(),
         updatedBy,
       }))
@@ -95,6 +97,8 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
       updatedAt: now,
       completedAt: completedAt || (completed ? now : null),
       updatedBy,
+      // Store S3 URL or null (not base64 - that goes to S3)
+      imageData: imageUrl || null,
     }
     
     await docClient.send(
@@ -124,6 +128,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         col,
         content,
         completed,
+        imageData: imageUrl || null,
         updatedAt: new Date().toISOString(),
         updatedBy,
       }))
@@ -157,10 +162,11 @@ export async function loadBingoCard(cardId) {
               content: data.content || '',
               completed: data.completed || false,
               completedAt: data.completedAt || null,
-              updatedBy: data.updatedBy || null
+              updatedBy: data.updatedBy || null,
+              imageData: data.imageData || null
             }
           } else {
-            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null }
+            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, imageData: null }
           }
         }
       }
@@ -189,7 +195,8 @@ export async function loadBingoCard(cardId) {
         content: '',
         completed: false,
         completedAt: null,
-        updatedBy: null
+        updatedBy: null,
+        imageData: null
       }))
     )
 
@@ -204,7 +211,8 @@ export async function loadBingoCard(cardId) {
             content: item.content || '',
             completed: item.completed === true || item.completed === 'true',
             completedAt: item.completedAt || null,
-            updatedBy: item.updatedBy || null
+            updatedBy: item.updatedBy || null,
+            imageData: item.imageData || null
           }
         }
       })
@@ -227,28 +235,29 @@ export async function loadBingoCard(cardId) {
       console.error('CORS or Network Error - DynamoDB cannot be accessed directly from browser')
     }
     
-    // Fallback to localStorage on error
-    try {
-      const tiles = []
-      for (let row = 0; row < 5; row++) {
-        tiles[row] = []
-        for (let col = 0; col < 5; col++) {
-          const tileId = getTileId(row, col)
-          const key = `bingo-tile-${tileId}`
-          const stored = localStorage.getItem(key)
-          if (stored) {
-            const data = JSON.parse(stored)
-            tiles[row][col] = {
-              content: data.content || '',
-              completed: data.completed || false,
-              completedAt: data.completedAt || null,
-              updatedBy: data.updatedBy || null
+      // Fallback to localStorage on error
+      try {
+        const tiles = []
+        for (let row = 0; row < 5; row++) {
+          tiles[row] = []
+          for (let col = 0; col < 5; col++) {
+            const tileId = getTileId(row, col)
+            const key = `bingo-tile-${tileId}`
+            const stored = localStorage.getItem(key)
+            if (stored) {
+              const data = JSON.parse(stored)
+              tiles[row][col] = {
+                content: data.content || '',
+                completed: data.completed || false,
+                completedAt: data.completedAt || null,
+                updatedBy: data.updatedBy || null,
+                imageData: data.imageData || null
+              }
+            } else {
+              tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, imageData: null }
             }
-          } else {
-            tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null }
           }
         }
-      }
       console.warn('Fell back to localStorage due to DynamoDB error')
       return {
         success: true,

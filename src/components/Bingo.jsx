@@ -6,18 +6,24 @@ import {
   recordStatusChange,
   recordContentChange
 } from '../services/bingoStorage'
+import { uploadTileImage, deleteTileImage, getImageUrl } from '../services/s3Storage'
 import UserIndicator from './UserIndicator'
 
 // Modal component for editing tile content
 function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   const [content, setContent] = useState('')
   const [completed, setCompleted] = useState(false)
+  const [imageData, setImageData] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     if (isOpen && tile) {
       setContent(tile.content || '')
       setCompleted(tile.completed || false)
+      setImageData(tile.imageData || null)
+      setImagePreview(tile.imageData || null)
       // Focus input after modal opens
       setTimeout(() => {
         inputRef.current?.focus()
@@ -28,8 +34,44 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
 
   if (!isOpen || !tile) return null
 
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const base64String = reader.result
+      setImageData(base64String)
+      setImagePreview(base64String)
+    }
+    reader.onerror = () => {
+      alert('Failed to read image file')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveImage = () => {
+    setImageData(null)
+    setImagePreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   const handleSave = () => {
-    onSave(content, completed)
+    onSave(content, completed, imageData)
   }
 
   const handleKeyDown = (e) => {
@@ -55,7 +97,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
         onClick={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
       >
-        <h2 className="text-white text-lg md:text-xl font-bold mb-4">Edit Tile</h2>
+        <h2 className="text-white text-lg md:text-xl font-bold mb-4">Tile Details</h2>
         
         <textarea
           ref={inputRef}
@@ -71,6 +113,49 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
             WebkitAppearance: 'none'
           }}
         />
+        
+        {/* Image Upload Section */}
+        <div className="mb-4">
+          <label className="block text-white font-medium text-sm mb-2">Image (Optional)</label>
+          
+          {imagePreview && (
+            <div className="mb-3 relative">
+              <img 
+                src={imagePreview} 
+                alt="Preview" 
+                className="w-full max-h-48 object-contain rounded-lg border-2 border-gray-600"
+              />
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold touch-manipulation"
+                style={{
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            className="hidden"
+            id="image-upload"
+          />
+          <label
+            htmlFor="image-upload"
+            className="block w-full bg-gray-700 hover:bg-gray-600 text-white rounded-lg p-3 text-center cursor-pointer touch-manipulation transition-colors text-sm font-medium min-h-[44px] flex items-center justify-center"
+            style={{
+              WebkitTapHighlightColor: 'transparent'
+            }}
+          >
+            {imagePreview ? 'Change Image' : 'Upload Image'}
+          </label>
+        </div>
         
         {/* Completion Toggle - Larger for mobile */}
         <div className="mb-6">
@@ -134,24 +219,60 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
             Save
           </button>
         </div>
-        
-        <p className="text-gray-400 text-xs mt-3 text-center hidden md:block">
-          Press Cmd/Ctrl + Enter to save, Esc to cancel
-        </p>
       </div>
     </div>
   )
 }
 
 // Component to display tile content
-function TileContent({ content, completed }) {
+function TileContent({ content, completed, imageData }) {
   const divRef = useRef(null)
 
   useEffect(() => {
-    if (divRef.current) {
+    if (divRef.current && !imageData) {
       divRef.current.textContent = content || ''
     }
-  }, [content])
+  }, [content, imageData])
+
+  if (imageData) {
+    return (
+      <div
+        className={`relative z-10 w-full h-full bg-transparent border-none outline-none ${
+          completed ? 'opacity-50' : ''
+        }`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '2px',
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden'
+        }}
+      >
+        <img 
+          src={imageData} 
+          alt={content || 'Tile image'} 
+          className="w-full h-full object-cover rounded"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '100%'
+          }}
+        />
+        {content && (
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-center p-1"
+            style={{
+              fontSize: 'clamp(0.3rem, 1vw, 0.5rem)',
+              lineHeight: '1.1'
+            }}
+          >
+            {content}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -197,7 +318,8 @@ function Bingo() {
         content: '',
         completed: false,
         completedAt: null,
-        updatedBy: null
+        updatedBy: null,
+        imageData: null
       }))
     )
   })
@@ -220,7 +342,7 @@ function Bingo() {
       // Only save if we've finished loading and there might be unsaved changes in modal
       if (!isInitialLoadRef.current && modalTile) {
         const username = getCurrentUsername()
-        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt, username).catch(err => 
+        saveBingoTile(CARD_ID, modalTile.row, modalTile.col, modalTile.content, modalTile.completed, modalTile.completedAt, username, modalTile.imageData || null).catch(err => 
           console.error(`Failed to save tile on unload:`, err)
         )
       }
@@ -248,7 +370,14 @@ function Bingo() {
           )
           
           if (isValid) {
-            setTiles(loadedTiles)
+            // Ensure all tiles have imageData field
+            const normalizedTiles = loadedTiles.map(row => 
+              row.map(tile => ({
+                ...tile,
+                imageData: tile.imageData || null
+              }))
+            )
+            setTiles(normalizedTiles)
           } else {
             console.warn('Invalid tile structure - using default empty tiles')
           }
@@ -269,21 +398,21 @@ function Bingo() {
   }
 
   // Save a single tile - only saves when Save button is clicked
-  const saveTile = useCallback(async (row, col, content, completed, completedAt = null) => {
+  const saveTile = useCallback(async (row, col, content, completed, completedAt = null, imageUrl = null) => {
     if (isInitialLoadRef.current) {
       return
     }
 
-    setSaving(true)
-    setSaveError(null)
     try {
       const username = getCurrentUsername()
-      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt, username)
+      const result = await saveBingoTile(CARD_ID, row, col, content, completed, completedAt, username, imageUrl)
       if (!result.success) {
         setSaveError('Failed to save - check console for details')
         console.error('Save failed:', result)
+        setTimeout(() => setSaveError(null), 5000)
       } else if (result.fallback) {
         setSaveError('Saved locally only - not synced to cloud')
+        setTimeout(() => setSaveError(null), 5000)
       } else {
         // Update the tile in state with saved content
         setTiles(prev => {
@@ -291,7 +420,8 @@ function Bingo() {
           newTiles[row] = [...newTiles[row]]
           newTiles[row][col] = {
             ...newTiles[row][col],
-            content: content
+            content: content,
+            imageData: imageUrl
           }
           return newTiles
         })
@@ -299,8 +429,6 @@ function Bingo() {
     } catch (error) {
       console.error(`Failed to save tile ${row}-${col}:`, error)
       setSaveError('Save failed - check console')
-    } finally {
-      setSaving(false)
       setTimeout(() => setSaveError(null), 5000)
     }
   }, [])
@@ -314,56 +442,93 @@ function Bingo() {
       content: tile.content,
       completed: tile.completed,
       completedAt: tile.completedAt || null,
-      updatedBy: tile.updatedBy || null
+      updatedBy: tile.updatedBy || null,
+      imageData: tile.imageData || null
     })
   }
 
-  const handleModalSave = (newContent, newCompleted) => {
+  const handleModalSave = async (newContent, newCompleted, newImageData) => {
     if (!modalTile) return
     
     const { row, col } = modalTile
     const oldContent = tiles[row][col].content
     const oldCompleted = tiles[row][col].completed
     const oldCompletedAt = tiles[row][col].completedAt
+    const oldImageData = tiles[row][col].imageData
     const username = getCurrentUsername()
     
-    // Calculate completedAt: set when marking as completed, preserve if already completed, clear when uncompleted
-    const now = new Date().toISOString()
-    const newCompletedAt = newCompleted 
-      ? (oldCompletedAt || now)
-      : null
+    setSaving(true)
+    setSaveError(null)
     
-    // Track content change if content changed
-    if (oldContent !== newContent) {
-      recordContentChange(CARD_ID, row, col, oldContent, newContent, username).catch(err => 
-        console.error('Failed to record content change:', err)
-      )
-    }
-    
-    // Track status change if completion status changed
-    if (oldCompleted !== newCompleted) {
-      recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted, username).catch(err => 
-        console.error('Failed to record status change:', err)
-      )
-    }
-    
-    // Update tile state
-    setTiles(prev => {
-      const newTiles = [...prev]
-      newTiles[row] = [...newTiles[row]]
-      newTiles[row][col] = {
-        ...newTiles[row][col],
-        content: newContent,
-        completed: newCompleted,
-        completedAt: newCompletedAt,
-        updatedBy: username // Track who made the update
+    try {
+      let finalImageUrl = null
+      
+      // Handle image upload/removal
+      if (newImageData && newImageData !== oldImageData) {
+        // New image uploaded - upload to S3
+        const uploadResult = await uploadTileImage(CARD_ID, row, col, newImageData)
+        if (uploadResult.success) {
+          finalImageUrl = uploadResult.imageUrl
+        } else {
+          setSaveError('Failed to upload image - ' + (uploadResult.error || 'Unknown error'))
+          setSaving(false)
+          return
+        }
+      } else if (!newImageData && oldImageData) {
+        // Image was removed - delete from S3 if it's an S3 URL
+        if (oldImageData.startsWith('http://') || oldImageData.startsWith('https://')) {
+          await deleteTileImage(CARD_ID, row, col)
+        }
+        finalImageUrl = null
+      } else if (oldImageData) {
+        // Keep existing image
+        finalImageUrl = oldImageData
       }
-      return newTiles
-    })
-    
-    // Save to DynamoDB - use the calculated completedAt
-    saveTile(row, col, newContent, newCompleted, newCompletedAt)
-    setModalTile(null)
+      
+      // Calculate completedAt: set when marking as completed, preserve if already completed, clear when uncompleted
+      const now = new Date().toISOString()
+      const newCompletedAt = newCompleted 
+        ? (oldCompletedAt || now)
+        : null
+      
+      // Track content change if content changed
+      if (oldContent !== newContent) {
+        recordContentChange(CARD_ID, row, col, oldContent, newContent, username).catch(err => 
+          console.error('Failed to record content change:', err)
+        )
+      }
+      
+      // Track status change if completion status changed
+      if (oldCompleted !== newCompleted) {
+        recordStatusChange(CARD_ID, row, col, oldCompleted, newCompleted, username).catch(err => 
+          console.error('Failed to record status change:', err)
+        )
+      }
+      
+      // Update tile state
+      setTiles(prev => {
+        const newTiles = [...prev]
+        newTiles[row] = [...newTiles[row]]
+        newTiles[row][col] = {
+          ...newTiles[row][col],
+          content: newContent,
+          completed: newCompleted,
+          completedAt: newCompletedAt,
+          updatedBy: username, // Track who made the update
+          imageData: finalImageUrl
+        }
+        return newTiles
+      })
+      
+      // Save to DynamoDB - use the calculated completedAt and S3 URL
+      await saveTile(row, col, newContent, newCompleted, newCompletedAt, finalImageUrl)
+      setModalTile(null)
+    } catch (error) {
+      console.error('Error saving tile:', error)
+      setSaveError('Failed to save - ' + error.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleModalCancel = () => {
@@ -452,6 +617,7 @@ function Bingo() {
                   <TileContent
                     content={tile.content}
                     completed={tile.completed}
+                    imageData={tile.imageData ? getImageUrl(tile.imageData) : null}
                   />
                 </div>
               )

@@ -25,7 +25,10 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
       const imageData = tile.imageData || tile.images || null
       if (imageData) {
         const imageArray = Array.isArray(imageData) ? imageData : [imageData]
-        setImages(imageArray.filter(Boolean).map(url => ({ url, preview: url })))
+        setImages(imageArray.filter(Boolean).map(url => ({ 
+          url, 
+          preview: getImageUrl(url) // Convert S3 URI/key to HTTPS URL for preview
+        })))
       } else {
         setImages([])
       }
@@ -514,17 +517,17 @@ function Bingo() {
             return
           }
         } else if (imageUrl) {
-          // It's already an S3 URL, keep it
+          // It's already an S3 URI, key, or URL, keep it
           finalImageUrls.push(imageUrl)
         }
       }
       
       // Delete images that were removed (compare old vs new)
       const imagesToDelete = oldImages.filter(oldUrl => !finalImageUrls.includes(oldUrl))
-      for (const imageUrl of imagesToDelete) {
-        if (imageUrl && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
-          // Extract index from S3 key or delete by URL
-          await deleteTileImageByUrl(CARD_ID, imageUrl)
+      for (const imageUrlOrKey of imagesToDelete) {
+        if (imageUrlOrKey) {
+          // deleteTileImageByUrl handles both S3 keys and full URLs
+          await deleteTileImageByUrl(CARD_ID, imageUrlOrKey)
         }
       }
       

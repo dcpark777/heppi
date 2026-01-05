@@ -50,13 +50,13 @@ function base64ToUint8Array(base64String) {
 
 /**
  * Generate S3 key for a tile image
- * Format: bingo/{cardId}/{row}-{col}-{timestamp}.{ext}
- * Uses timestamp for uniqueness to avoid collisions
+ * Format: tiles/{row}-{col}/images/{timestamp}-{random}.{ext}
+ * Groups all images for a tile together for easier management
  */
 function getImageKey(cardId, row, col, extension = 'jpg') {
   const timestamp = Date.now()
   const random = Math.random().toString(36).substring(2, 9) // Add random string for extra uniqueness
-  return `bingo/${cardId}/${row}-${col}-${timestamp}-${random}.${extension}`
+  return `tiles/${row}-${col}/images/${timestamp}-${random}.${extension}`
 }
 
 /**
@@ -106,10 +106,9 @@ export async function uploadTileImage(cardId, row, col, base64Image) {
     
     await s3Client.send(command)
     
-    // Construct public URL
-    const imageUrl = `https://${BUCKET_NAME}.s3.${import.meta.env.VITE_AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`
-    
-    return { success: true, imageUrl }
+    // Return full S3 path including bucket (s3://bucket-name/key)
+    const s3Path = `s3://${BUCKET_NAME}/${key}`
+    return { success: true, imageUrl: s3Path }
   } catch (error) {
     console.error('Error uploading image to S3:', error)
     
@@ -119,29 +118,67 @@ export async function uploadTileImage(cardId, row, col, base64Image) {
 }
 
 /**
- * Delete image from S3 by URL
- * @param {string} cardId - The bingo card ID
- * @param {string} imageUrl - Full S3 URL of the image to delete
+ * Delete image from S3 by S3 URI, URL, or key
+ * @param {string} cardId - The bingo card ID (unused, kept for compatibility)
+ * @param {string} imageUriOrUrlOrKey - S3 URI (s3://bucket/key), HTTPS URL, or S3 key
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-export async function deleteTileImageByUrl(cardId, imageUrl) {
+export async function deleteTileImageByUrl(cardId, imageUriOrUrlOrKey) {
   if (!isAWSConfigured() || !s3Client) {
     return { success: true, fallback: true }
   }
 
-  if (!imageUrl || (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
+  if (!imageUriOrUrlOrKey) {
     return { success: true }
   }
 
   try {
-    // Extract key from S3 URL
-    // Format: https://bucket.s3.region.amazonaws.com/bingo/cardId/row-col-timestamp.ext
-    const urlObj = new URL(imageUrl)
-    const key = urlObj.pathname.substring(1) // Remove leading slash
-    if (!key || !key.startsWith('bingo/')) {
-      console.warn('Could not extract S3 key from URL:', imageUrl)
-      return { success: false, error: 'Invalid S3 URL format' }
+    let key = imageUriOrUrlOrKey
+    
+    // If it's an S3 URI (s3://bucket/key), extract the key
+    if (imageUriOrUrlOrKey.startsWith('s3://')) {
+      const match = imageUriOrUrlOrKey.match(/^s3:\/\/([^/]+)\/(.+)$/)
+      if (match) {
+        key = match[2] // Extract key part
+      } else {
+        console.warn('Could not extract S3 key from URI:', imageUriOrUrlOrKey)
+        return { success: false, error: 'Invalid S3 URI format' }
+      }
     }
+    // If it's a full HTTPS URL, extract the key
+    else if (imageUriOrUrlOrKey.startsWith('http://') || imageUriOrUrlOrKey.startsWith('https://')) {
+      // Extract key from S3 URL
+      // Format: https://bucket.s3.region.amazonaws.com/tiles/row-col/images/timestamp-random.ext
+      // Also supports old formats: bingo/... or tiles/cardId/...
+      const urlObj = new URL(imageUriOrUrlOrKey)
+      key = urlObj.pathname.substring(1) // Remove leading slash
+      if (!key || (!key.startsWith('tiles/') && !key.startsWith('bingo/'))) {
+        console.warn('Could not extract S3 key from URL:', imageUriOrUrlOrKey)
+        return { success: false, error: 'Invalid S3 URL format' }
+      }
+      
+      // Convert old bingo/ prefix to tiles/
+      if (key.startsWith('bingo/')) {
+        key = key.replace(/^bingo\//, 'tiles/')
+      }
+      
+      // If key contains cardId (old format), remove it
+      // Old: tiles/cardId/row-col/images/... or bingo/cardId/row-col-timestamp.ext
+      // New: tiles/row-col/images/...
+      const oldFormatMatch = key.match(/^tiles\/[^/]+\/([0-9]+-[0-9]+)/)
+      if (oldFormatMatch) {
+        // Remove cardId part: tiles/cardId/... -> tiles/...
+        key = key.replace(/^tiles\/[^/]+\//, 'tiles/')
+      }
+    }
+    // Otherwise, assume it's already an S3 key
+    
+    // Validate key format
+    if (!key.startsWith('tiles/')) {
+      console.warn('Invalid S3 key format:', key)
+      return { success: false, error: 'Invalid S3 key format' }
+    }
+    
     const command = new DeleteObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
@@ -199,19 +236,32 @@ export async function deleteTileImage(cardId, row, col) {
 }
 
 /**
- * Get image URL (handles both S3 URLs and base64 data URLs)
- * @param {string} imageUrlOrData - Either S3 URL or base64 data URL
+ * Get image URL (handles S3 URIs, S3 keys, HTTPS URLs, and base64 data URLs)
+ * @param {string} imageUrlOrData - S3 URI (s3://bucket/key), S3 key, HTTPS URL, or base64 data URL
  * @returns {string} The image URL
  */
 export function getImageUrl(imageUrlOrData) {
   if (!imageUrlOrData) return null
   
-  // If it's already a base64 data URL or full URL, return as-is
+  // If it's already a base64 data URL or full HTTPS URL, return as-is
   if (imageUrlOrData.startsWith('data:') || imageUrlOrData.startsWith('http://') || imageUrlOrData.startsWith('https://')) {
     return imageUrlOrData
   }
   
-  // Otherwise, assume it's an S3 key and construct URL
-  return `https://${BUCKET_NAME}.s3.${import.meta.env.VITE_AWS_REGION || 'us-east-1'}.amazonaws.com/${imageUrlOrData}`
+  // If it's an S3 URI (s3://bucket/key), extract bucket and key
+  if (imageUrlOrData.startsWith('s3://')) {
+    const match = imageUrlOrData.match(/^s3:\/\/([^/]+)\/(.+)$/)
+    if (match) {
+      const [, bucket, key] = match
+      return `https://${bucket}.s3.${import.meta.env.VITE_AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`
+    }
+    // Fallback if parsing fails
+    return imageUrlOrData
+  }
+  
+  // Otherwise, assume it's an S3 key (backward compatibility) and construct URL
+  // Use the bucket from environment or default
+  const bucket = BUCKET_NAME
+  return `https://${bucket}.s3.${import.meta.env.VITE_AWS_REGION || 'us-east-1'}.amazonaws.com/${imageUrlOrData}`
 }
 

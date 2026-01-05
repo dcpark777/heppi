@@ -8,6 +8,7 @@ import {
 } from '../services/bingoStorage'
 import { uploadTileImage, deleteTileImage, deleteTileImageByUrl, getImageUrl } from '../services/s3Storage'
 import UserIndicator from './UserIndicator'
+import heic2any from 'heic2any'
 
 // Modal component for editing tile content
 function EditTileModal({ isOpen, tile, onSave, onCancel }) {
@@ -56,7 +57,7 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
 
   if (!isOpen || !tile) return null
 
-  const handleImageChange = (e) => {
+  const handleImageChange = async (e) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
 
@@ -73,26 +74,66 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
       }
     }
 
-    // Read all files
-    const readers = files.map(file => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve({ url: reader.result, preview: reader.result })
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-    })
+    try {
+      // Process all files (convert HEIC if needed, then read as data URL)
+      const processedFiles = await Promise.all(
+        files.map(async (file) => {
+          // Check if file is HEIC format
+          const isHEIC = file.type === 'image/heic' || 
+                        file.type === 'image/heif' ||
+                        file.name.toLowerCase().endsWith('.heic') ||
+                        file.name.toLowerCase().endsWith('.heif')
+          
+          if (isHEIC) {
+            try {
+              // Convert HEIC to JPEG using heic2any
+              const convertedBlobs = await heic2any({
+                blob: file,
+                toType: 'image/jpeg',
+                quality: 0.92
+              })
+              
+              // heic2any returns an array, take the first result
+              const jpegBlob = Array.isArray(convertedBlobs) ? convertedBlobs[0] : convertedBlobs
+              
+              // Create a new File object with JPEG type
+              const jpegFile = new File([jpegBlob], file.name.replace(/\.heic?$/i, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: file.lastModified
+              })
+              
+              return jpegFile
+            } catch (conversionError) {
+              console.error('Failed to convert HEIC image:', conversionError)
+              alert('Failed to convert HEIC image. Please try converting it to JPEG first.')
+              throw conversionError
+            }
+          }
+          
+          return file
+        })
+      )
 
-    Promise.all(readers)
-      .then(newImages => {
-        setImages(prev => [...prev, ...newImages])
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''
-        }
+      // Read all processed files as data URLs
+      const readers = processedFiles.map(file => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve({ url: reader.result, preview: reader.result })
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
       })
-      .catch(() => {
-        alert('Failed to read one or more image files')
-      })
+
+      const newImages = await Promise.all(readers)
+      setImages(prev => [...prev, ...newImages])
+      
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    } catch (error) {
+      console.error('Error processing images:', error)
+      alert('Failed to process one or more image files')
+    }
   }
 
   const handleRemoveImage = (indexToRemove) => {

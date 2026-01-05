@@ -50,3 +50,6 @@ Thumbs.db
 # Scripts
 scripts/
 
+# Cursor documentation
+cursor_documentation/
+

@@ -10,6 +10,87 @@ import { uploadTileImage, deleteTileImage, deleteTileImageByUrl, getImageUrl } f
 import UserIndicator from './UserIndicator'
 import heic2any from 'heic2any'
 
+/**
+ * Compress an image to reduce file size
+ * @param {Blob|File} imageBlob - The image blob to compress
+ * @param {number} quality - JPEG quality (0-1)
+ * @param {number} maxWidth - Maximum width in pixels
+ * @returns {Promise<Blob>} Compressed image blob
+ */
+function compressImage(imageBlob, quality = 0.85, maxWidth = 1920) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(imageBlob)
+    
+    // Use requestIdleCallback to defer heavy work if possible
+    const processImage = () => {
+      // Calculate new dimensions
+      let width = img.width
+      let height = img.height
+      
+      // Only compress if image is significantly larger than maxWidth
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      } else {
+        // If image is already small enough, just convert format without resizing
+        URL.revokeObjectURL(url)
+        // For small images, just return the original or minimal compression
+        if (imageBlob.size < 1024 * 1024) { // Less than 1MB
+          resolve(imageBlob)
+          return
+        }
+      }
+      
+      // Create canvas and compress
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      
+      // Use willReadFrequently hint for better performance
+      const ctx = canvas.getContext('2d', { willReadFrequently: false })
+      
+      // Use imageSmoothingEnabled for better quality at lower sizes
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      
+      // Draw image
+      ctx.drawImage(img, 0, 0, width, height)
+      
+      // Convert to blob with compression - use setTimeout to yield to browser
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(url)
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('Failed to compress image'))
+          }
+        },
+        'image/jpeg',
+        quality
+      )
+    }
+    
+    img.onload = () => {
+      // Defer processing to avoid blocking
+      if (window.requestIdleCallback) {
+        requestIdleCallback(processImage, { timeout: 100 })
+      } else {
+        // Fallback: use setTimeout to yield to browser
+        setTimeout(processImage, 0)
+      }
+    }
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to load image for compression'))
+    }
+    
+    img.src = url
+  })
+}
+
 // Modal component for editing tile content
 function EditTileModal({ isOpen, tile, onSave, onCancel }) {
   const [content, setContent] = useState('')
@@ -90,14 +171,20 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
               const convertedBlobs = await heic2any({
                 blob: file,
                 toType: 'image/jpeg',
-                quality: 0.92
+                quality: 0.85 // Slightly lower quality for faster conversion and smaller files
               })
               
               // heic2any returns an array, take the first result
               const jpegBlob = Array.isArray(convertedBlobs) ? convertedBlobs[0] : convertedBlobs
               
+              // Compress the converted image further (only if it's large)
+              let finalBlob = jpegBlob
+              if (jpegBlob.size > 2 * 1024 * 1024) { // Only compress if > 2MB
+                finalBlob = await compressImage(jpegBlob, 0.85, 1920) // Max width 1920px, 85% quality
+              }
+              
               // Create a new File object with JPEG type
-              const jpegFile = new File([jpegBlob], file.name.replace(/\.heic?$/i, '.jpg'), {
+              const jpegFile = new File([compressedBlob], file.name.replace(/\.heic?$/i, '.jpg'), {
                 type: 'image/jpeg',
                 lastModified: file.lastModified
               })
@@ -108,6 +195,16 @@ function EditTileModal({ isOpen, tile, onSave, onCancel }) {
               alert('Failed to convert HEIC image. Please try converting it to JPEG first.')
               throw conversionError
             }
+          }
+          
+          // Compress regular images too if they're large (only compress if > 3MB to avoid unnecessary processing)
+          if (file.size > 3 * 1024 * 1024) { // Compress if larger than 3MB
+            return compressImage(file, 0.85, 1920).then(compressedBlob => {
+              return new File([compressedBlob], file.name, {
+                type: file.type,
+                lastModified: file.lastModified
+              })
+            })
           }
           
           return file
@@ -612,24 +709,46 @@ function Bingo() {
       const newImageUrlsArray = Array.isArray(newImageUrls) ? newImageUrls : (newImageUrls ? [newImageUrls] : [])
       const finalImageUrls = []
       
-      // Process each image
-      for (let i = 0; i < newImageUrlsArray.length; i++) {
-        const imageUrl = newImageUrlsArray[i]
-        
-        // If it's a base64 data URL, upload to S3
+      // Separate new uploads from existing images
+      const imagesToUpload = []
+      const existingImages = []
+      
+      newImageUrlsArray.forEach((imageUrl, index) => {
         if (imageUrl && imageUrl.startsWith('data:')) {
-          const uploadResult = await uploadTileImage(CARD_ID, row, col, imageUrl)
-          if (uploadResult.success) {
-            finalImageUrls.push(uploadResult.imageUrl)
-          } else {
-            setSaveError('Failed to upload image ' + (i + 1) + ' - ' + (uploadResult.error || 'Unknown error'))
-            setSaving(false)
-            return
-          }
+          imagesToUpload.push({ url: imageUrl, index })
         } else if (imageUrl) {
-          // It's already an S3 URI, key, or URL, keep it
-          finalImageUrls.push(imageUrl)
+          existingImages.push({ url: imageUrl, index })
         }
+      })
+      
+      // Upload all new images in parallel for faster processing
+      if (imagesToUpload.length > 0) {
+        const uploadPromises = imagesToUpload.map(({ url, index }) => 
+          uploadTileImage(CARD_ID, row, col, url).then(result => ({ result, index }))
+        )
+        
+        const uploadResults = await Promise.all(uploadPromises)
+        
+        // Check for failures
+        const failedUpload = uploadResults.find(({ result }) => !result.success)
+        if (failedUpload) {
+          const failedIndex = uploadResults.indexOf(failedUpload)
+          setSaveError('Failed to upload image ' + (failedIndex + 1) + ' - ' + (failedUpload.result.error || 'Unknown error'))
+          setSaving(false)
+          return
+        }
+        
+        // Combine results in original order
+        const allResults = [...uploadResults, ...existingImages.map(({ url, index }) => ({ result: { success: true, imageUrl: url }, index }))]
+        allResults.sort((a, b) => a.index - b.index)
+        allResults.forEach(({ result }) => {
+          if (result.success && result.imageUrl) {
+            finalImageUrls.push(result.imageUrl)
+          }
+        })
+      } else {
+        // No new uploads, just use existing images
+        existingImages.forEach(({ url }) => finalImageUrls.push(url))
       }
       
       // Delete images that were removed (compare old vs new)

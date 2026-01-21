@@ -1,46 +1,5 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
-
-// Check if AWS is configured
-const isAWSConfigured = () => {
-  const accessKey = import.meta.env.VITE_AWS_ACCESS_KEY_ID
-  const secretKey = import.meta.env.VITE_AWS_SECRET_ACCESS_KEY
-  const configured = !!(accessKey && secretKey)
-  
-  if (!configured) {
-    console.warn('AWS not configured - missing credentials. Check .env file and restart dev server.')
-  }
-  
-  return configured
-}
-
-// Initialize AWS client (only if credentials are provided)
-let client = null
-let docClient = null
-
-if (isAWSConfigured()) {
-  try {
-    client = new DynamoDBClient({
-      region: import.meta.env.VITE_AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
-        secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
-      },
-      // Add request handler for better error reporting
-      requestHandler: {
-        requestTimeout: 10000, // 10 second timeout
-      },
-    })
-    docClient = DynamoDBDocumentClient.from(client)
-  } catch (error) {
-    console.error('Failed to initialize AWS client:', error)
-  }
-}
-
-// Get environment (dev or prod) from env var, default to dev for local development
-const ENV = import.meta.env.VITE_ENVIRONMENT || 'dev'
-const BINGO_CARD_TABLE = import.meta.env.VITE_BINGO_CARD_TABLE || `bingo-cards-${ENV}`
-const BINGO_CHANGES_TABLE = import.meta.env.VITE_BINGO_CHANGES_TABLE || `bingo-changes-${ENV}`
+// API base URL - empty string means same origin (Vercel will handle routing)
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 /**
  * Get current username from sessionStorage
@@ -65,63 +24,34 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
   const tileId = getTileId(row, col)
   const updatedBy = username || getCurrentUsername()
 
-  if (!isAWSConfigured() || !docClient) {
-    console.warn('AWS not configured - saving to localStorage as fallback')
-    try {
-      // Save individual tile to localStorage
-      const key = `bingo-tile-${tileId}`
-      const imagesArray = imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]) : []
-      localStorage.setItem(key, JSON.stringify({
+  try {
+    const response = await fetch(`${API_BASE}/api/save-tile`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tileId,
         row,
         col,
         content,
         completed,
-        images: imagesArray,
-        previewImageIndex: previewImageIndex,
-        updatedAt: new Date().toISOString(),
-        updatedBy,
-      }))
-      return { success: true, fallback: true }
-    } catch (error) {
-      console.error('Failed to save to localStorage:', error)
-      return { success: false, error: error.message }
-    }
-  }
+        completedAt,
+        username: updatedBy,
+        imageUrls,
+        previewImageIndex,
+      }),
+    })
 
-  try {
-    const now = new Date().toISOString()
-    const item = {
-      tileId,
-      row,
-      col,
-      content: content || '',
-      completed: completed || false,
-      updatedAt: now,
-      completedAt: completedAt || (completed ? now : null),
-      updatedBy,
-      // Store array of S3 URLs (not base64 - that goes to S3)
-      images: imageUrls ? (Array.isArray(imageUrls) ? imageUrls : [imageUrls]).filter(Boolean) : [],
-      previewImageIndex: previewImageIndex,
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errorData.error || `HTTP ${response.status}`)
     }
-    
-    await docClient.send(
-      new PutCommand({
-        TableName: BINGO_CARD_TABLE,
-        Item: item,
-      })
-    )
 
-    return { success: true }
+    const result = await response.json()
+    return result
   } catch (error) {
-    console.error('Error saving tile to DynamoDB:', error)
-    
-    if (error.message?.includes('CORS') || error.message?.includes('Network') || error.name === 'NetworkError' || error.code === 'NetworkingError') {
-      console.error('CORS or Network Error - DynamoDB cannot be accessed directly from browser')
-    }
-    
-    if (error.name === 'AccessDeniedException' || error.code === 'AccessDeniedException') {
-      console.error('Access Denied - Check IAM permissions')
-    }
+    console.error('Error saving tile:', error)
     
     // Fallback to localStorage on error
     try {
@@ -133,6 +63,7 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
         content,
         completed,
         images: imagesArray,
+        previewImageIndex: previewImageIndex,
         updatedAt: new Date().toISOString(),
         updatedBy,
       }))
@@ -149,10 +80,28 @@ export async function saveBingoTile(cardId, row, col, content, completed, comple
  * Load bingo card state - loads all tiles for a card
  */
 export async function loadBingoCard(cardId) {
-  if (!isAWSConfigured() || !docClient) {
-    console.warn('AWS not configured - loading from localStorage as fallback')
+  try {
+    const response = await fetch(`${API_BASE}/api/load-card?cardId=${encodeURIComponent(cardId || '')}`)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errorData.error || `HTTP ${response.status}`)
+    }
+
+    const result = await response.json()
+    
+    if (result.success) {
+      return {
+        success: true,
+        tiles: result.tiles || [],
+      }
+    }
+    return result
+  } catch (error) {
+    console.error('Error loading card:', error)
+    
+    // Fallback to localStorage on error
     try {
-      // Load all tiles from localStorage
       const tiles = []
       for (let row = 0; row < 5; row++) {
         tiles[row] = []
@@ -178,103 +127,7 @@ export async function loadBingoCard(cardId) {
           }
         }
       }
-      return {
-        success: true,
-        tiles,
-        fallback: true
-      }
-    } catch (error) {
-      return { success: false, error: error.message }
-    }
-  }
-
-  try {
-    // Scan all tiles (there's only one card, so we can scan the entire table)
-    // With only 25 tiles, this is efficient
-    const result = await docClient.send(
-      new ScanCommand({
-        TableName: BINGO_CARD_TABLE,
-      })
-    )
-
-    // Initialize 5x5 grid with empty tiles
-    const tiles = Array(5).fill(null).map(() => 
-      Array(5).fill(null).map(() => ({
-        content: '',
-        completed: false,
-        completedAt: null,
-        updatedBy: null,
-        images: []
-      }))
-    )
-
-    // Populate tiles from DynamoDB results
-    if (result.Items && result.Items.length > 0) {
-      result.Items.forEach(item => {
-        const row = typeof item.row === 'number' ? item.row : parseInt(item.row, 10)
-        const col = typeof item.col === 'number' ? item.col : parseInt(item.col, 10)
-        
-        if (!isNaN(row) && !isNaN(col) && row >= 0 && row < 5 && col >= 0 && col < 5) {
-          // Support both old single image format and new array format
-          const imageData = item.images || item.imageData || null
-          const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
-          tiles[row][col] = {
-            content: item.content || '',
-            completed: item.completed === true || item.completed === 'true',
-            completedAt: item.completedAt || null,
-            updatedBy: item.updatedBy || null,
-            images: imagesArray,
-            previewImageIndex: item.previewImageIndex !== undefined ? item.previewImageIndex : 0
-          }
-        }
-      })
-    }
-
-    return {
-      success: true,
-      tiles,
-    }
-  } catch (error) {
-    console.error('Error loading bingo card from DynamoDB:', error)
-    
-    // Check for CORS errors
-    if (error.message?.includes('CORS') || 
-        error.message?.includes('Network') || 
-        error.name === 'NetworkError' ||
-        error.code === 'NetworkingError' ||
-        error.message?.includes('Failed to fetch') ||
-        error.message?.includes('network error')) {
-      console.error('CORS or Network Error - DynamoDB cannot be accessed directly from browser')
-    }
-    
-      // Fallback to localStorage on error
-      try {
-        const tiles = []
-        for (let row = 0; row < 5; row++) {
-          tiles[row] = []
-          for (let col = 0; col < 5; col++) {
-            const tileId = getTileId(row, col)
-            const key = `bingo-tile-${tileId}`
-            const stored = localStorage.getItem(key)
-            if (stored) {
-              const data = JSON.parse(stored)
-              // Support both old single image format and new array format
-              const imageData = data.images || data.imageData || null
-              const imagesArray = imageData ? (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean) : []
-              tiles[row][col] = {
-                content: data.content || '',
-                completed: data.completed || false,
-                completedAt: data.completedAt || null,
-                updatedBy: data.updatedBy || null,
-                images: imagesArray,
-                previewImageIndex: data.previewImageIndex !== undefined ? data.previewImageIndex : 0
-              }
-            } else {
-              tiles[row][col] = { content: '', completed: false, completedAt: null, updatedBy: null, images: [], previewImageIndex: 0 }
-            }
-          }
-        }
-      console.warn('Fell back to localStorage due to DynamoDB error')
+      console.warn('Fell back to localStorage due to API error')
       return {
         success: true,
         tiles,
@@ -291,36 +144,33 @@ export async function loadBingoCard(cardId) {
  * Record a content change
  */
 export async function recordContentChange(cardId, row, col, oldContent, newContent, username = null) {
-  if (!isAWSConfigured()) {
-    // Silently skip if AWS not configured
-    return { success: true }
-  }
-
   try {
-    const timestamp = new Date().toISOString()
-    const changeId = `${timestamp}-${row}-${col}`
-    const userId = username || getCurrentUsername()
+    const response = await fetch(`${API_BASE}/api/record-content-change`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        cardId,
+        row,
+        col,
+        oldContent,
+        newContent,
+        username: username || getCurrentUsername(),
+      }),
+    })
 
-    await docClient.send(
-      new PutCommand({
-        TableName: BINGO_CHANGES_TABLE,
-        Item: {
-          changeId,
-          type: 'content',
-          row,
-          col,
-          oldValue: oldContent,
-          newValue: newContent,
-          timestamp,
-          userId,
-        },
-      })
-    )
+    if (!response.ok) {
+      // Silently fail for change tracking
+      return { success: true }
+    }
 
-    return { success: true }
+    const result = await response.json()
+    return result
   } catch (error) {
+    // Silently fail for change tracking
     console.error('Error recording content change:', error)
-    return { success: false, error: error.message }
+    return { success: true }
   }
 }
 
@@ -328,36 +178,33 @@ export async function recordContentChange(cardId, row, col, oldContent, newConte
  * Record a status change
  */
 export async function recordStatusChange(cardId, row, col, oldStatus, newStatus, username = null) {
-  if (!isAWSConfigured()) {
-    // Silently skip if AWS not configured
-    return { success: true }
-  }
-
   try {
-    const timestamp = new Date().toISOString()
-    const changeId = `${timestamp}-${row}-${col}`
-    const userId = username || getCurrentUsername()
+    const response = await fetch(`${API_BASE}/api/record-status-change`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        cardId,
+        row,
+        col,
+        oldStatus,
+        newStatus,
+        username: username || getCurrentUsername(),
+      }),
+    })
 
-    await docClient.send(
-      new PutCommand({
-        TableName: BINGO_CHANGES_TABLE,
-        Item: {
-          changeId,
-          type: 'status',
-          row,
-          col,
-          oldValue: oldStatus.toString(),
-          newValue: newStatus.toString(),
-          timestamp,
-          userId,
-        },
-      })
-    )
+    if (!response.ok) {
+      // Silently fail for change tracking
+      return { success: true }
+    }
 
-    return { success: true }
+    const result = await response.json()
+    return result
   } catch (error) {
+    // Silently fail for change tracking
     console.error('Error recording status change:', error)
-    return { success: false, error: error.message }
+    return { success: true }
   }
 }
 
@@ -367,30 +214,17 @@ export async function recordStatusChange(cardId, row, col, oldStatus, newStatus,
  */
 export async function getChangeHistory(cardId, limit = 100) {
   try {
-    // Scan all changes (there's only one card)
-    const result = await docClient.send(
-      new ScanCommand({
-        TableName: BINGO_CHANGES_TABLE,
-        Limit: limit * 2, // Get more items to sort and limit client-side
-      })
-    )
+    const response = await fetch(`${API_BASE}/api/get-change-history?limit=${limit}`)
 
-    // Sort by timestamp descending (most recent first) and limit
-    const changes = (result.Items || [])
-      .sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime()
-        const timeB = new Date(b.timestamp).getTime()
-        return timeB - timeA // Descending
-      })
-      .slice(0, limit)
-
-    return {
-      success: true,
-      changes,
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errorData.error || `HTTP ${response.status}`)
     }
+
+    const result = await response.json()
+    return result
   } catch (error) {
     console.error('Error getting change history:', error)
     return { success: false, error: error.message, changes: [] }
   }
 }
-

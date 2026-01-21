@@ -8,6 +8,9 @@ pnpm-lock.yaml
 .env
 .env.local
 .env.*.local
+.env.backup.*
+*.env.backup
+.env.*.backup
 
 # Build outputs
 dist/
@@ -42,6 +45,16 @@ terraform/.terraform.tfstate.lock.info
 # Legacy files
 *.pem
 *.key
+*.pem.backup
+*.key.backup
+
+# Security - credentials and secrets
+*secret*
+*credential*
+*password*
+*access-key*
+*private-key*
+*api-key*
 
 # OS
 .DS_Store
